@@ -6,12 +6,12 @@ set(MICROPY_OOFATFS_DIR "${MICROPY_DIR}/lib/oofatfs")
 set(MICROPY_SOURCE_EXTMOD
     ${MICROPY_DIR}/shared/libc/abort_.c
     ${MICROPY_DIR}/shared/libc/printf.c
-    ${MICROPY_EXTMOD_DIR}/btstack/modbluetooth_btstack.c
-    ${MICROPY_EXTMOD_DIR}/machine_adc.c
-    ${MICROPY_EXTMOD_DIR}/machine_adc_block.c
+    #${MICROPY_EXTMOD_DIR}/btstack/modbluetooth_btstack.c
+    #${MICROPY_EXTMOD_DIR}/machine_adc.c
+    #${MICROPY_EXTMOD_DIR}/machine_adc_block.c
     ${MICROPY_EXTMOD_DIR}/machine_bitstream.c
     ${MICROPY_EXTMOD_DIR}/machine_i2c.c
-    ${MICROPY_EXTMOD_DIR}/machine_i2s.c
+    #${MICROPY_EXTMOD_DIR}/machine_i2s.c
     ${MICROPY_EXTMOD_DIR}/machine_mem.c
     ${MICROPY_EXTMOD_DIR}/machine_pulse.c
     ${MICROPY_EXTMOD_DIR}/machine_pwm.c
@@ -20,18 +20,18 @@ set(MICROPY_SOURCE_EXTMOD
     ${MICROPY_EXTMOD_DIR}/machine_uart.c
     ${MICROPY_EXTMOD_DIR}/machine_usb_device.c
     ${MICROPY_EXTMOD_DIR}/machine_wdt.c
-    ${MICROPY_EXTMOD_DIR}/modbluetooth.c
+    #${MICROPY_EXTMOD_DIR}/modbluetooth.c
     ${MICROPY_EXTMOD_DIR}/modframebuf.c
-    ${MICROPY_EXTMOD_DIR}/modlwip.c
+    #${MICROPY_EXTMOD_DIR}/modlwip.c
     ${MICROPY_EXTMOD_DIR}/modmachine.c
-    ${MICROPY_EXTMOD_DIR}/modnetwork.c
+    #${MICROPY_EXTMOD_DIR}/modnetwork.c
     ${MICROPY_EXTMOD_DIR}/modonewire.c
     ${MICROPY_EXTMOD_DIR}/modasyncio.c
     ${MICROPY_EXTMOD_DIR}/modbinascii.c
-    ${MICROPY_EXTMOD_DIR}/modcryptolib.c
+    #${MICROPY_EXTMOD_DIR}/modcryptolib.c
     ${MICROPY_EXTMOD_DIR}/moductypes.c
     ${MICROPY_EXTMOD_DIR}/moddeflate.c
-    ${MICROPY_EXTMOD_DIR}/modhashlib.c
+    #${MICROPY_EXTMOD_DIR}/modhashlib.c
     ${MICROPY_EXTMOD_DIR}/modheapq.c
     ${MICROPY_EXTMOD_DIR}/modjson.c
     ${MICROPY_EXTMOD_DIR}/modos.c
@@ -41,7 +41,7 @@ set(MICROPY_SOURCE_EXTMOD
     ${MICROPY_EXTMOD_DIR}/modselect.c
     ${MICROPY_EXTMOD_DIR}/modsocket.c
     ${MICROPY_EXTMOD_DIR}/modtls_axtls.c
-    ${MICROPY_EXTMOD_DIR}/modtls_mbedtls.c
+    #${MICROPY_EXTMOD_DIR}/modtls_mbedtls.c
     ${MICROPY_EXTMOD_DIR}/modtime.c
     ${MICROPY_EXTMOD_DIR}/modvfs.c
     ${MICROPY_EXTMOD_DIR}/modwebsocket.c
@@ -61,7 +61,7 @@ set(MICROPY_SOURCE_EXTMOD
     ${MICROPY_EXTMOD_DIR}/vfs_posix_file.c
     ${MICROPY_EXTMOD_DIR}/vfs_reader.c
     ${MICROPY_EXTMOD_DIR}/virtpin.c
-    ${MICROPY_EXTMOD_DIR}/nimble/modbluetooth_nimble.c
+    #${MICROPY_EXTMOD_DIR}/nimble/modbluetooth_nimble.c
 )
 
 # Single-precision libm math library.

@@ -4,9 +4,7 @@
     ],
     "docs": "",
     "features": [
-        "BLE",
         "External Flash",
-        "WiFi"
     ],
     "images": [
         "esp32_devkitc.jpg"
