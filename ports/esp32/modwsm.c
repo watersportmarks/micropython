@@ -265,7 +265,7 @@ mp_obj_t wsm_print_log(mp_obj_t value) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(wsm_print_log_obj, wsm_print_log);
 
-/// \method wsm_print_log()
+/// \method wsm_set_wifi_credentials()
 mp_obj_t wsm_set_wifi_credentials(mp_obj_t ssid, mp_obj_t pw, mp_obj_t index) {
     set_wifi_credentials(mp_obj_str_get_str(ssid), mp_obj_str_get_str(pw), mp_obj_get_int(index));
     return mp_const_none;
@@ -321,6 +321,13 @@ mp_obj_t wsm_get_start_lon(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_start_lon_obj, wsm_get_start_lon);
 
+/// \method wsm_set_gpstime()
+mp_obj_t wsm_set_gpstime(mp_obj_t value) {
+    set_GPStime(mp_obj_str_get_str(value));
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_gpstime_obj, wsm_set_gpstime);
+
 static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_wsm) },
 
@@ -356,6 +363,7 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_get_delta_lon), MP_ROM_PTR(&wsm_get_delta_lon_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_start_lat), MP_ROM_PTR(&wsm_get_start_lat_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_start_lon), MP_ROM_PTR(&wsm_get_start_lon_obj) },
+    { MP_ROM_QSTR(MP_QSTR_set_gpstime), MP_ROM_PTR(&wsm_set_gpstime_obj) },
 };
 
 static MP_DEFINE_CONST_DICT(wsm_module_globals, wsm_module_globals_table);
