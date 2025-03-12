@@ -41,7 +41,9 @@
 #include "shared/timeutils/timeutils.h"
 #include "modmachine.h"
 #include "modwsm.h"
-#include "../../../../../main/esp_http_client_example.h"
+#include "../../../../../main/main.h"
+#include "../../../../../main/bluetooth.h"
+#include "../../../../../main/logging.h"
 
 char api_version[6] = "XX.XX\0";
 char temp_buff[512];
@@ -257,7 +259,7 @@ mp_obj_t wsm_print_log(mp_obj_t value) {
     //memcpy(temp_buff, mp_obj_str_get_str(value), strlen(mp_obj_str_get_str(value)));
     //printf("print log2: %s (%d)\r\n", temp_buff, strlen(temp_buff));
     //const char* val = mp_obj_str_get_str(value);
-    print_log(mp_obj_str_get_str(value));
+    print_log((char*)mp_obj_str_get_str(value));
     //uint16_t fsize = strlen(mp_obj_str_get_str(value));
     //char *fdata = mp_obj_str_get_data(value, (size_t*)&fsize);
     //my_print_log(fdata);
@@ -267,7 +269,7 @@ static MP_DEFINE_CONST_FUN_OBJ_1(wsm_print_log_obj, wsm_print_log);
 
 /// \method wsm_set_wifi_credentials()
 mp_obj_t wsm_set_wifi_credentials(mp_obj_t ssid, mp_obj_t pw, mp_obj_t index) {
-    set_wifi_credentials(mp_obj_str_get_str(ssid), mp_obj_str_get_str(pw), mp_obj_get_int(index));
+    set_wifi_credentials((char*)mp_obj_str_get_str(ssid), (char*)mp_obj_str_get_str(pw), mp_obj_get_int(index));
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_3(wsm_set_wifi_credentials_obj, wsm_set_wifi_credentials);
@@ -323,7 +325,7 @@ static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_start_lon_obj, wsm_get_start_lon);
 
 /// \method wsm_set_gpstime()
 mp_obj_t wsm_set_gpstime(mp_obj_t value) {
-    set_GPStime(mp_obj_str_get_str(value));
+    set_GPStime((char*)mp_obj_str_get_str(value));
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_gpstime_obj, wsm_set_gpstime);
