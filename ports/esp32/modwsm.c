@@ -92,6 +92,14 @@ mp_obj_t wsm_set_heading(mp_obj_t value) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_heading_obj, wsm_set_heading);
 
+/// \method wsm_set_heading_filt()
+mp_obj_t wsm_set_heading_filt(mp_obj_t value) {
+    int val = mp_obj_get_int(value);
+    set_headingFilt(val);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_heading_filt_obj, wsm_set_heading_filt);
+
 /// \method wsm_set_delta_lat()
 mp_obj_t wsm_set_delta_lat(mp_obj_t value) {
     double val = mp_obj_get_float(value);
@@ -337,6 +345,7 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_get_bt_update), MP_ROM_PTR(&wsm_get_bt_update_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_api_version), MP_ROM_PTR(&get_api_version_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_heading), MP_ROM_PTR(&wsm_set_heading_obj) },
+    { MP_ROM_QSTR(MP_QSTR_set_heading_filt), MP_ROM_PTR(&wsm_set_heading_filt_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_delta_lat), MP_ROM_PTR(&wsm_set_delta_lat_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_delta_lon), MP_ROM_PTR(&wsm_set_delta_lon_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_gps_precision), MP_ROM_PTR(&wsm_set_gps_precision_obj) },

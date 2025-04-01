@@ -19,6 +19,7 @@ MAX_WIDTH=2010
 
 # global variables
 heading = 0	 # from IMU task
+headingFilt = 1000 # Init at 1000 (outside heading range) in order to recognize it need to be set with the sensor value at start
 # IMUmode=0x02  # 1="geomag" ; 2="fusion"
 timeGPS="000001"
 lat=45.8 # gps latitude
@@ -72,7 +73,11 @@ RESISTOR_R2 = 10.0
 VOLTAGE_DIVIDER = (RESISTOR_R2 / (RESISTOR_R1 + RESISTOR_R2))
 ADC_TO_AMP = (0.256/32768.0)*1000.0
 AMP_TO_ADC = (32768.0/0.256)/1000.0
-adc = ads1x15.ADS1015(i2c, address=0x48, gain=1) # Range is +/- 4.096V.
+adc = None
+try:
+    adc = ads1x15.ADS1015(i2c, address=0x48, gain=1) # Range is +/- 4.096V.
+except:
+    adc = None
 temp=20.0
 volt=16.0
 amp=0.1
@@ -80,21 +85,33 @@ wsm.set_amp(amp)
 mAh=10000
 wsm.set_mah(mAh)
 
-i2cDev=i2c.scan() # returns 72 (0x48 ADS1015); 74 0x4A BNO085; 66 GPS
-print("I2C devices found:",i2cDev)
+# If there is a problem with the I2C bus then the following call blocks forever.
+#i2cDev=i2c.scan() # returns 72 (0x48 ADS1015); 74 0x4A BNO085; 66 GPS
+#print("I2C devices found:",i2cDev)
+
 #i2c.readfrom(0x48, 1)
 ADC_TO_VOLT = (4.096/(32768.0*VOLTAGE_DIVIDER))
-volt = adc.read(4,0)
+if adc != None:
+    try:
+        volt = adc.read(4,0)
+    except:
+        volt = 0
+else:
+    volt = 0
 volt = volt*ADC_TO_VOLT # conversione corretta? 
 wsm.set_volt(volt)
 print("volt",volt)
 
 # IMU init
-bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
-#bno = BNO08X_I2C(i2c, debug=False)
-bno.calibration() # calibrate accel + mag
-bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms
-#print("IMU configured")
+bno = None
+try:
+    bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
+    #bno = BNO08X_I2C(i2c, debug=False)
+    bno.calibration() # calibrate accel + mag
+    bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms
+    #print("IMU configured")
+except:
+    bno = None
 
 # GPS init
 startTgps = time.time()
@@ -103,19 +120,22 @@ data = unhexlify("ff")  # data stream
 # m8n ublox disable GLL, GSA, VTG
 # enable RMC (RMC will be disabled once date is parsed) and GSV (Satellites in View)
 # GGA enabled by default
-i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,GLL,0,0,0,0,0,0*5C\r\n', False)
-i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,GSA,0,0,0,0,0,0*4E\r\n', False)
-i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,VTG,0,0,0,0,0,0*5E\r\n', False)
-#i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,RMC,0,0,0,0,0,0*47\r\n', False)
-i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,RMC,1,1,1,1,0,0*47\r\n', False) # Enable RMC to get Date
-#i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,GSV,0,20,0,0,0,0*6B\r\n', False) # print each 20
-i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,GSV,0,0,0,0,0,0*59\r\n', False) # Disable GSV
-# See "UBX-CFG-RATE" from "u-blox M8 Receiver Description"
-# \xB5\x62\x06\x08\x06\x00\xC8\x00\x01\x00\x01\x00\xDE\x6A => set update rate to 5hz
-# \xB5\x62\x06\x08\x00\x00\x0E\x30 => get current rate
-#i2c.writeto(GPS_I2C_ADDRESS, b'\xB5\x62\x06\x08\x06\x00\xC8\x00\x01\x00\x01\x00\xDE\x6A\xB5\x62\x06\x08\x00\x00\x0E\x30', False) # 5Hz + read setting
-i2c.writeto(GPS_I2C_ADDRESS, b'\xB5\x62\x06\x08\x06\x00\xC8\x00\x01\x00\x01\x00\xDE\x6A', False) # 5Hz
-#i2c.writeto(GPS_I2C_ADDRESS, b'\xB5\x62\x06\x08\x06\x00\xF4\x01\x01\x00\x01\x00\x0B\x77', False) # 2Hz
+try:
+    i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,GLL,0,0,0,0,0,0*5C\r\n', False)
+    i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,GSA,0,0,0,0,0,0*4E\r\n', False)
+    i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,VTG,0,0,0,0,0,0*5E\r\n', False)
+    #i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,RMC,0,0,0,0,0,0*47\r\n', False)
+    i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,RMC,1,1,1,1,0,0*47\r\n', False) # Enable RMC to get Date
+    #i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,GSV,0,20,0,0,0,0*6B\r\n', False) # print each 20
+    i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,GSV,0,0,0,0,0,0*59\r\n', False) # Disable GSV
+    # See "UBX-CFG-RATE" from "u-blox M8 Receiver Description"
+    # \xB5\x62\x06\x08\x06\x00\xC8\x00\x01\x00\x01\x00\xDE\x6A => set update rate to 5hz
+    # \xB5\x62\x06\x08\x00\x00\x0E\x30 => get current rate
+    #i2c.writeto(GPS_I2C_ADDRESS, b'\xB5\x62\x06\x08\x06\x00\xC8\x00\x01\x00\x01\x00\xDE\x6A\xB5\x62\x06\x08\x00\x00\x0E\x30', False) # 5Hz + read setting
+    i2c.writeto(GPS_I2C_ADDRESS, b'\xB5\x62\x06\x08\x06\x00\xC8\x00\x01\x00\x01\x00\xDE\x6A', False) # 5Hz
+    #i2c.writeto(GPS_I2C_ADDRESS, b'\xB5\x62\x06\x08\x06\x00\xF4\x01\x01\x00\x01\x00\x0B\x77', False) # 2Hz
+except:
+    pass
 
 def set2Range(angle):
     if angle > 180:
@@ -177,9 +197,9 @@ def read_gps():
     global oldLat, oldLon, startTgps, global_status_warnings, nmea_rmc_disabled, warnings
     global lat, lon, timeGPS, FixQuality, GPSdeltaDist
     global GPSheading, GPSprecision, freshGPS, GPS_HZ
-    buflen = int.from_bytes(i2c_read_reg(GPS_I2C_ADDRESS, bufmsb, 2), "big")
-    #print("buflen = " + str(buflen))
     try:
+        buflen = int.from_bytes(i2c_read_reg(GPS_I2C_ADDRESS, bufmsb, 2), "big")
+        #print("buflen = " + str(buflen))        
         if buflen > 0:
             nmeas = i2c_read_reg(GPS_I2C_ADDRESS, data, buflen).decode().splitlines()
             if buflen>80:
@@ -268,10 +288,12 @@ def read_gps():
     except UnicodeError: # if stray \xff chars make it into the buffer, don't crash
         pass
     except IndexError: # if data is not transferred properly, don't crash
-        pass    
+        pass
+    except:
+        pass
     
 def start_control_loop():
-    global freshGPS, GPSdeltaDist, GPS_HZ, GPSheading, time_refreshGPS, warnings, amp, volt, adc, mAh
+    global freshGPS, GPSdeltaDist, GPS_HZ, GPSheading, time_refreshGPS, warnings, amp, volt, adc, mAh, headingFilt
 
     MOTlimit = 500
     SOFT_ACC_STEP = 2 # When goal changed, for 10 seconds is active
@@ -388,10 +410,16 @@ def start_control_loop():
         #******* read imu at 25Hz
         #print("bno.euler = " + str(bno.euler))
         #start = time.ticks_ms()
-        try: # sometimes I get error here...
-            R, T, P, confidence = bno.euler
-        except:
-            print("imu read error")
+        if bno != None:
+            try: # sometimes I get error here...
+                R, T, P, confidence = bno.euler
+            except:
+                print("imu read error")
+        else:
+            R = 0
+            T = 0
+            P = 0
+            confidence = 0
         #delta = time.ticks_diff(time.ticks_ms(), start) # compute time difference
         #delta_time[log_count] = delta
         #R=0
@@ -399,7 +427,12 @@ def start_control_loop():
         #P=0
         #confidence = 0
         heading=int(P)
-        wsm.set_heading(heading)
+        if headingFilt == 1000: # At boot headingFilt is initialized at 1000 in order to start with the same value read from the sensor
+            headingFilt = heading
+        else:
+            headingFilt = int(headingFilt*0.9 + heading*0.1)
+        wsm.set_heading_filt(headingFilt)
+        
         confidence = int(confidence*100) 
         magCal=0
         if confidence < 40:
@@ -749,8 +782,14 @@ def start_control_loop():
             else:
                 strobo.off()
             
-            adc.gain = 1 # 1x 4.096V
-            volt = adc.read(4,0)
+            if adc != None:
+                try:
+                    adc.gain = 1 # 1x 4.096V
+                    volt = adc.read(4,0)
+                except:
+                    volt = 0
+            else:
+                volt = 0    
             volt = volt*ADC_TO_VOLT # conversione corretta? 
             wsm.set_volt(volt)
             #print(volt)
@@ -780,8 +819,14 @@ def start_control_loop():
             #    time.sleep(2)
             #    check_call(['sudo', 'poweroff'])
 
-            adc.gain = 5 # 16x (0.256V)
-            amp = adc.read(4,1)
+            if adc != None:
+                try:
+                    adc.gain = 5 # 16x (0.256V)
+                    amp = adc.read(4,1)
+                except:
+                    amp = 0
+            else:
+                amp = 0
             #print("curr = " + str(amp))
             if first_measure == 1:
                 first_measure = 0
@@ -877,22 +922,26 @@ def start_control_loop():
             #print(delta_lat, delta_lon, heading, "[", magCal, lat, lon)
 
             # check if it is time and quality to save a IMU calibration
-            if not bno.calibration_completed():
-                imu_cal_done_count = imu_cal_done_count + 1
-                if imu_cal_done_count == 5:#125: # If after 4 seconds calibration still not started, then resend command
-                    imu_cal_done_count = 0
-                    bno.calibration() # calibrate accel + mag
-                    print("restart imu cal")
-            if confidence < IMU_GOOD_ACCURACY_THR:
-                if confidence < imu_best_confidence:
-                    imu_save_cal_count = imu_save_cal_count + 1
-                    if imu_save_cal_count == IMU_SAVE_CALIBRATION_DELAY:
-                        imu_save_cal_count = 0
-                        imu_best_confidence = confidence
-                        bno.save_calibration_data()
-                        print("save calibration")
-                else:
-                    imu_save_cal_count = 0           
+            if bno != None:
+                try:
+                    if not bno.calibration_completed():
+                        imu_cal_done_count = imu_cal_done_count + 1
+                        if imu_cal_done_count == 5:#125: # If after 4 seconds calibration still not started, then resend command
+                            imu_cal_done_count = 0
+                            bno.calibration() # calibrate accel + mag
+                            print("restart imu cal")
+                    if confidence < IMU_GOOD_ACCURACY_THR:
+                        if confidence < imu_best_confidence:
+                            imu_save_cal_count = imu_save_cal_count + 1
+                            if imu_save_cal_count == IMU_SAVE_CALIBRATION_DELAY:
+                                imu_save_cal_count = 0
+                                imu_best_confidence = confidence
+                                bno.save_calibration_data()
+                                print("save calibration")
+                        else:
+                            imu_save_cal_count = 0    
+                except:
+                    print("imu calib error")
     # end tasks at 1 Hz
             
 
