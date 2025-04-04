@@ -44,6 +44,7 @@
 #include "../../../../../main/main.h"
 #include "../../../../../main/bluetooth.h"
 #include "../../../../../main/logging.h"
+#include "../../../../../main/alerts.h"
 
 char api_version[6] = "XX.XX\0";
 char temp_buff[512];
@@ -338,6 +339,28 @@ mp_obj_t wsm_set_gpstime(mp_obj_t value) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_gpstime_obj, wsm_set_gpstime);
 
+/// \method wsm_get_speed_limit()
+mp_obj_t wsm_get_speed_limit(void) {
+    return mp_obj_new_float(get_SPEEDlimit());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_speed_limit_obj, wsm_get_speed_limit);
+
+/// \method wsm_set_speed_limit()
+mp_obj_t wsm_set_speed_limit(mp_obj_t value) {
+    float val = mp_obj_get_float(value);
+    set_SPEEDlimit(val);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_speed_limit_obj, wsm_set_speed_limit);
+
+/// \method wsm_set_alert()
+mp_obj_t wsm_set_alert(mp_obj_t value) {
+    int val = mp_obj_get_int(value);
+    set_AlertToSend(val);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_alert_obj, wsm_set_alert);
+
 static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_wsm) },
 
@@ -375,6 +398,9 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_get_start_lat), MP_ROM_PTR(&wsm_get_start_lat_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_start_lon), MP_ROM_PTR(&wsm_get_start_lon_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_gpstime), MP_ROM_PTR(&wsm_set_gpstime_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_speed_limit), MP_ROM_PTR(&wsm_get_speed_limit_obj) },
+    { MP_ROM_QSTR(MP_QSTR_set_speed_limit), MP_ROM_PTR(&wsm_set_speed_limit_obj) },
+    { MP_ROM_QSTR(MP_QSTR_set_alert), MP_ROM_PTR(&wsm_set_alert_obj) },
 };
 
 static MP_DEFINE_CONST_DICT(wsm_module_globals, wsm_module_globals_table);

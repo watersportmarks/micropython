@@ -111,6 +111,7 @@ try:
     bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms
     #print("IMU configured")
 except:
+    print("Cannot init IMU")
     bno = None
 
 # GPS init
@@ -135,6 +136,7 @@ try:
     i2c.writeto(GPS_I2C_ADDRESS, b'\xB5\x62\x06\x08\x06\x00\xC8\x00\x01\x00\x01\x00\xDE\x6A', False) # 5Hz
     #i2c.writeto(GPS_I2C_ADDRESS, b'\xB5\x62\x06\x08\x06\x00\xF4\x01\x01\x00\x01\x00\x0B\x77', False) # 2Hz
 except:
+    print("Cannot init GPS")
     pass
 
 def set2Range(angle):
@@ -427,6 +429,7 @@ def start_control_loop():
         #P=0
         #confidence = 0
         heading=int(P)
+        wsm.set_heading(heading)
         if headingFilt == 1000: # At boot headingFilt is initialized at 1000 in order to start with the same value read from the sensor
             headingFilt = heading
         else:
@@ -520,6 +523,7 @@ def start_control_loop():
             wsm.set_ang_wind(angWind)
 
         if freshGPS==1:
+            SPEEDlimit = wsm.get_speed_limit()
             freshGPS=0
             delta_lat = wsm.get_delta_lat()
             delta_lon = wsm.get_delta_lon()
@@ -540,6 +544,7 @@ def start_control_loop():
                 if distance <2:
                     AtPos=1
                     SPEEDlimit=0.6
+                    wsm.set_speed_limit(SPEEDlimit)
                 if goalChanged==1:
                     warnings+="; goal changed "+str(int(distance))+"m"
                     AtPos=0
@@ -552,6 +557,7 @@ def start_control_loop():
                     wsm.set_ang_wind(angWind)
                 if AtPos==1 and distance >6 and goalChanged==0:
                     AlertToSend |= (0x01)
+                    wsm.set_alert(AlertToSend)
                     AtPos=0
                     warnings+="; alert 6m"
                 ## alert for abnormal rotation reaction, maybe 1 motor blocked or damaged
@@ -561,6 +567,7 @@ def start_control_loop():
                         rotProblCounterR=0
                         warnings+="motR~?" + str(int(rot)) + "; " + str(int(delta_a))
                         AlertToSend |= (0x02)
+                        wsm.set_alert(AlertToSend)
                         stallProtectionRight = 1
                         stallRightCounter = 0
                 else:
@@ -573,6 +580,7 @@ def start_control_loop():
                         rotProblCounterL=0
                         warnings+="motL~?" + str(int(rot)) + "; " + str(int(delta_a))
                         AlertToSend |= (0x04)
+                        wsm.set_alert(AlertToSend)
                         stallProtectionLeft = 1
                         stallLeftCounter = 0
                 else:
@@ -798,12 +806,14 @@ def start_control_loop():
             #    global_status_warnings |= (0x01)
             #    # send a SMS
             #    AlertToSend |= (0x08)  # bit4
+            #   wsm.set_alert(AlertToSend)
             #else:
             #    global_status_warnings &= ~(0x01)
             #if volt2<12.2 and volt!=0: # was 13.2V  3V3 per cell
             #    print("standby because of low voltage")
             #    # send a SMS
             #    AlertToSend |= (0x08)  # bit4
+            #   wsm.set_alert(AlertToSend)
             #    controlType =0   # turn off motors to save batteries
             #    updateCntrOnDB=1
             #    global_status_errors |= (0x04)
@@ -812,6 +822,7 @@ def start_control_loop():
             #if volt2<11.0 and volt!=0: # was 12.0  3V0 per cell
             #    # send a SMS
             #    AlertToSend |= (0x08)
+            #   wsm.set_alert(AlertToSend)
             #    controlType =0   # should shutdown completely
             #    updateCntrOnDB=1
             #    wsm.set_control_type(controlType)            
