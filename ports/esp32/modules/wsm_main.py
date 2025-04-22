@@ -115,7 +115,7 @@ except:
     bno = None
 
 # GPS init
-startTgps = time.time()
+startTgps = time.ticks_ms()
 bufmsb = unhexlify("fd")  # bytes in buffer,
 data = unhexlify("ff")  # data stream
 # m8n ublox disable GLL, GSA, VTG
@@ -274,13 +274,16 @@ def read_gps():
                     if GPSprecision>999:
                         GPSprecision=999
                     wsm.set_gps_precision(GPSprecision)
-                    time_refreshGPS = time.time() - startTgps
+                    time_refreshGPS = time.ticks_ms() - startTgps
+                    time_refreshGPS = time_refreshGPS/1000
+                    #print("time_refreshGPS = " + str(time_refreshGPS))
                     if time_refreshGPS>2:
                         time_refreshGPS = 2 # in case time is too long to avoid crazy effects
                     if time_refreshGPS<0.01:
                         time_refreshGPS = 0.01 #  to avoid crazy effects                         
-                    GPS_HZ=1/time_refreshGPS                      
-                    startTgps = time.time()
+                    GPS_HZ=1/time_refreshGPS
+                    #print("GPS_HZ = " + str(GPS_HZ))
+                    startTgps = time.ticks_ms()
                     freshGPS=1
                     if FixQuality > 1: # FixQuality: 0=no fix, 1=minimal, 2=assisted, 3=differential
                         global_status_warnings &= ~(0x04)
@@ -378,6 +381,8 @@ def start_control_loop():
     old_d2 = 0
     SPEEDlimit = 0.6 # m/s then start to decrease the motor speed
     tempMOTlimit = MOTlimit  # eventually decreased the tempMOTlimit if GPS speed too high or electrical current too high
+    long_message_count = 0
+    longMessage = ""
 
     wdt = WDT(timeout=10000)  # enable it with a timeout of 10s
 
@@ -524,6 +529,7 @@ def start_control_loop():
 
         if freshGPS==1:
             SPEEDlimit = wsm.get_speed_limit()
+            #print("SPEEDlimit = " + str(SPEEDlimit))
             freshGPS=0
             delta_lat = wsm.get_delta_lat()
             delta_lon = wsm.get_delta_lon()
@@ -534,6 +540,7 @@ def start_control_loop():
             old_d=distance
             if controlType ==3: # limit speed filter only if GPS controlled
                 if ((GPSdeltaDist*GPS_HZ) > SPEEDlimit) and (delta_d<0): # gps distance * GPSrate = speed
+                    #print("tempMOTlimit = " + str(tempMOTlimit))
                     tempMOTlimit-=5   # if faster then decrease the motor limit
                     if tempMOTlimit<50:
                         tempMOTlimit=50
@@ -915,7 +922,12 @@ def start_control_loop():
             xx=wsm.get_delta_lat()
             yy=wsm.get_delta_lon()
             headingDriftFiltered=0
-            longMessage="%1.2f;%1.2f;%3.0f;(%d);%1.0f;%1.0f;%.1f;%.7f;%.7f;%d;%.0f;%.1f;%.2f;%.1f" % (xx,yy,heading, magCal,mR_duty-1500,mL_duty-1500, GPSprecision, lat, lon,int(float(timeGPS)),headingDriftFiltered,mAh,volt,amp)
+            long_message_count = long_message_count + 1
+            if(long_message_count == 10): # every 10 seconds
+                long_message_count = 0
+                longMessage="%1.2f;%1.2f;%3.0f;(%d);%1.0f;%1.0f;%.1f;%.7f;%.7f;%d;%.0f;%.1f;%.2f;%.1f" % (xx,yy,heading, magCal,mR_duty-1500,mL_duty-1500, GPSprecision, lat, lon,int(float(timeGPS)),headingDriftFiltered,mAh,volt,amp)
+            else:
+                longMessage="%1.2f;%1.2f;%3.0f;%1.0f;%1.0f;%.0f;%.1f" % (xx,yy,heading, mR_duty-1500,mL_duty-1500,headingDriftFiltered,amp)	
             #longMessage="%1.2f;%1.2f;%3.0f;(%d);%1.0f;%1.0f;%.1f;%.7f;%.7f;%d;%.0f;%.1f;%.2f;%.1f" % (xx,yy,heading, confidence,mR_duty-1500,mL_duty-1500, GPSprecision, lat, lon,int(float(timeGPS)),headingDriftFiltered,mAh,volt,amp)
             #confidence
             #print(longMessage+warnings)
