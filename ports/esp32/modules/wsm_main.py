@@ -33,14 +33,18 @@ warnings=" "
 PhoneNumber=""
 GPSnormPrec=[99, 10, 1.5, 99, 0.1, 0.8, 99,99,99] # normal (best) GPS precision depending on fix quality
 freshGPS=0; GPS_HZ=5; time_refreshGPS=0.1 # time between fresh data
+date_day = 0
+date_month = 0
+date_year = 0
 
 print("starting main.py")
 
 # LED init
-strobo = Pin(4, Pin.OUT, value=0)
-strobo.on()
-# time.sleep(1)
-strobo.off()
+strobo = PWM(Pin(4), freq=100, duty_u16=0) # 100 hz, 10ms; off
+#strobo = Pin(4, Pin.OUT, value=0)
+#strobo.on()
+## time.sleep(1)
+#strobo.off()
 
 global_status_warnings = 0
 
@@ -111,7 +115,7 @@ try:
     bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms
     #print("IMU configured")
 except:
-    print("Cannot init IMU")
+    wsm.print_log("Cannot init IMU\n")
     bno = None
 
 # GPS init
@@ -199,13 +203,14 @@ def read_gps():
     global oldLat, oldLon, startTgps, global_status_warnings, nmea_rmc_disabled, warnings
     global lat, lon, timeGPS, FixQuality, GPSdeltaDist
     global GPSheading, GPSprecision, freshGPS, GPS_HZ
+    global date_day, date_month, date_year
     try:
         buflen = int.from_bytes(i2c_read_reg(GPS_I2C_ADDRESS, bufmsb, 2), "big")
         #print("buflen = " + str(buflen))        
         if buflen > 0:
             nmeas = i2c_read_reg(GPS_I2C_ADDRESS, data, buflen).decode().splitlines()
             if buflen>80:
-                print("buflen:", buflen)
+                wsm.print_log("warning, gps buffer becoming full.." + str(buflen) + "\n")
 
             for nmea in nmeas:
                 #print("nmea = " + str(nmea))
@@ -215,13 +220,13 @@ def read_gps():
                         sdata = nmea.split(',')
                         date_string = sdata[9]
                         if date_string:  # Possible date stamp found
-                            day = int(date_string[0:2])
-                            month = int(date_string[2:4])
-                            year = int(date_string[4:6])                        
+                            date_day = int(date_string[0:2])
+                            date_month = int(date_string[2:4])
+                            date_year = int(date_string[4:6])                        
                             nmea_rmc_disabled = True
                             i2c.writeto(GPS_I2C_ADDRESS, b'$PUBX,40,RMC,0,0,0,0,0,0*47\r\n', False)
-                            print("date: " + str((day,month,year)))
-                            warnings += ";date:"+str((day,month,year))
+                            print("date: " + str((date_day,date_month,date_year)))
+                            warnings += ";date:"+str((date_day,date_month,date_year))
                         
                 nmea = bytes(nmea, 'utf-8')            
                 if (nmea[0:6] == b'$GPGGA') or (nmea[0:6] == b'$GNGGA'):
@@ -280,7 +285,9 @@ def read_gps():
                     if time_refreshGPS>2:
                         time_refreshGPS = 2 # in case time is too long to avoid crazy effects
                     if time_refreshGPS<0.01:
-                        time_refreshGPS = 0.01 #  to avoid crazy effects                         
+                        time_refreshGPS = 0.01 #  to avoid crazy effects   
+                    if time_refreshGPS > 0.8: # 5Hz was not accepted. try again
+                        wsm.print_log("refresh GPS slow:" + str(time_refreshGPS) + "\n")
                     GPS_HZ=1/time_refreshGPS
                     #print("GPS_HZ = " + str(GPS_HZ))
                     startTgps = time.ticks_ms()
@@ -298,7 +305,7 @@ def read_gps():
         pass
     
 def start_control_loop():
-    global freshGPS, GPSdeltaDist, GPS_HZ, GPSheading, time_refreshGPS, warnings, amp, volt, adc, mAh, headingFilt
+    global freshGPS, GPSdeltaDist, GPS_HZ, GPSheading, time_refreshGPS, warnings, amp, volt, adc, mAh, headingFilt, global_status_warnings, VOLTAGE_DIVIDER, MIN_WIDTH, MAX_WIDTH, timeGPS, date_day, date_month
 
     MOTlimit = 500
     SOFT_ACC_STEP = 2 # When goal changed, for 10 seconds is active
@@ -313,7 +320,7 @@ def start_control_loop():
     first_measure = 1
     btnPushed = False
     btnCounter = 0
-    stroboToggle = 0
+    #stroboToggle = 0
     log_count = 0 # counter for log and prints, each 1s
     delta_time = [0] * 25
     heading = 0
@@ -383,10 +390,86 @@ def start_control_loop():
     tempMOTlimit = MOTlimit  # eventually decreased the tempMOTlimit if GPS speed too high or electrical current too high
     long_message_count = 0
     longMessage = ""
+    delta_lat = 0
+    delta_lon = 0
+    xx = 0
+    yy = 0
+    x_des = 0
+    y_des = 0
+    boaID = 0
+    motorType = 2
+    IMUupsidedown_back = 0 # electronic board normal position   
+    forceForward = 0
+    imuPitchRoll = 0
+    roll = 0
+    pitch = 0
+    confidence = 0
+    confidence_prev = 0
+    fastFlash = 1
+    led_phase = 0
+    ledPWM = 1
+
+    boaID = wsm.get_mark_id()
+    print("boa id = " + str(boaID))
+    wsm.print_log("boa id = " + str(boaID) + "\r\n")
+
+    #if boaID==...: # change PID control parameters, ...
+
+    wsm.set_force_forward(forceForward)
+
+    if motorType==2:
+        #ka=1
+        #kaD=1.5
+        #kaI=0.2  # small Integral to force rotation
+        #integr_a=0.0
+        #kd=20 # k for distance (was 40 on big)
+        #kdD=20 # k for diff distance
+        #kdI=9 # k for integr distance
+        #kWind=1 # coefficient dependent on type of motors
+        kWind=0.5
+    if motorType==3:# fast medium cina
+        ka=0.8
+        kWind=2.0
+        kaD=0.3  # k for diff rotation
+        kd=30 # 20 # k for distance
+        kdD=30# 20 # k for diff distance
+        kdI=0 # 6 # k for integr distance
+        MIN_WIDTH=1300		# temporary. otherwise 1100-1900
+        MAX_WIDTH=1700
+        MOTlimit=110
+    if motorType==4:# big 48v cina
+        ka=0.8
+        kaD=0.3  # k for diff rotation
+        kd=20 # k for distance
+        kdD=20 # 10 # k for diff distance
+        kdI=0 # k for integr distance
+        kWind=1.0
+    if motorType==5:  # slower vd70
+        ka=1.2
+        kWind=2.0
+        kaD=0.3  # k for diff rotation
+        kd=40# 30 # k for distance
+        kdD=30 # 20 # k for diff distance
+    if motorType==6:# big 48v cina e per traino
+        ka=3
+        kaD=4  # k for diff rotation
+        kd=40 # k for distance
+        kdD=100 # k for diff distance
+        kdI=0 # k for integr distance
+        kWind=1.0
+    if motorType==7:# big 48v cina e per traino + ESC big water
+        ka=1
+        kaD=1  # k for diff rotation
+        kd=30 # k for distance
+        kdD=50 # k for diff distance
+        kdI=0 # k for integr distance
+        kWind=1.0
 
     wdt = WDT(timeout=10000)  # enable it with a timeout of 10s
 
     start = time.ticks_ms()  
+
+    wsm.print_log("xGPS; yGPS; heading;(CalMag);  mR, mL, GPSprecision, lat, lon, ,GPStime hhmmss, heading drift, mAh, Volt, Amp\n")
 
     while 1:
         wdt.feed()
@@ -401,6 +484,11 @@ def start_control_loop():
         if delta < 40:
             time.sleep_ms(40-delta)  # period 40ms: 25Hz
         start = time.ticks_ms()
+        
+        
+        if fastFlash>0:
+		    ## LED fast flash, turn off as soon as possible
+            strobo.duty_u16(0) # PWM off
         
         if btnPushed:
             btnCounter = btnCounter + 1
@@ -419,20 +507,24 @@ def start_control_loop():
         #start = time.ticks_ms()
         if bno != None:
             try: # sometimes I get error here...
-                R, T, P, confidence = bno.euler
+                roll, pitch, P, confidence = bno.euler
+                #print("roll = " + str(int(roll)))
+                #print("pitch = " + str(int(pitch)))
             except:
                 print("imu read error")
         else:
-            R = 0
-            T = 0
+            roll = 0
+            pitch = 0
             P = 0
             confidence = 0
         #delta = time.ticks_diff(time.ticks_ms(), start) # compute time difference
         #delta_time[log_count] = delta
-        #R=0
-        #T=0
-        #P=0
-        #confidence = 0
+        if(imuPitchRoll == 0):
+            roll = 0
+            pitch = 0
+        else:
+            roll = int(roll)
+            pitch = int(pitch)
         heading=int(P)
         wsm.set_heading(heading)
         if headingFilt == 1000: # At boot headingFilt is initialized at 1000 in order to start with the same value read from the sensor
@@ -443,13 +535,22 @@ def start_control_loop():
         
         confidence = int(confidence*100) 
         magCal=0
-        if confidence < 40:
-            magCal = 1
-        if confidence < 10:
-            magCal = 2
         if confidence < 3:
             magCal = 3
+            if confidence != confidence_prev:
+                wsm.print_log("Confidence OK:" + str(magCal) + "\n")
+        elif confidence < 10:
+            magCal = 2
+        elif confidence < 40:
+            magCal = 1
+            if confidence != confidence_prev:
+                wsm.print_log("Low confidence:" + str(magCal) + "\n")
+        else: #>=40
+            if confidence != confidence_prev:
+                wsm.print_log("Low confidence:" + str(magCal) + "\n")
         wsm.set_mag_cal(magCal)
+        confidence_prev = confidence
+
     #     option to save IMU calibration below in tasks at 1HZ
 
         #******* read GPS (when data ready) at 5Hz
@@ -466,11 +567,12 @@ def start_control_loop():
         if freshGPS==1:
             #headingDrift filter decay
             if headingDriftFiltered>0:
-                headingDriftFiltered-=(0.15 * time_refreshGPS)
+                #headingDriftFiltered-=(0.15 * time_refreshGPS)
+                headingDriftFiltered-=(1.5 * time_refreshGPS)
                 if headingDriftFiltered<0:	# passed from + to - as security set to 0
                     headingDriftFiltered=0
             else:
-                headingDriftFiltered+=(0.15 * time_refreshGPS)
+                headingDriftFiltered+=(1.5 * time_refreshGPS)
                 if headingDriftFiltered>0:
                     headingDriftFiltered=0
             if (controlType==1 or controlType==3) and forwardControl==1 and (GPSdeltaDist*GPS_HZ)>0.5 and math.fabs(mR-mL)<100:
@@ -518,6 +620,16 @@ def start_control_loop():
                 mL= mL * decr
                 warn=";%dA" %(int(amp))
                 warnings+=warn
+			# limitation from pitch
+            if (pitch>22 and pitch<67) : # 
+                mR=mR *(67-pitch)/45
+                mL=mL *(67-pitch)/45
+            if (pitch>-90 and pitch<-45): # 
+                mR=mR *(pitch+90)/45
+                mL=mL *(pitch+90)/45
+            if (pitch>66 or pitch<-89):
+                mR=0
+                mL=0                
             mR_duty=1500 + mR
             wsm.set_mr_duty(int(mR_duty))
             mL_duty=1500 + mL
@@ -533,7 +645,10 @@ def start_control_loop():
             freshGPS=0
             delta_lat = wsm.get_delta_lat()
             delta_lon = wsm.get_delta_lon()
-            distance= math.sqrt((delta_lat)*(delta_lat) + (delta_lon)*(delta_lon)) # calculate only with new GPS pos
+            xx = delta_lat
+            yy = delta_lon
+            # x_des and y_des on servo_demo.py are always zero...
+            distance= math.sqrt((x_des-xx)*(x_des-xx) + (y_des-yy)*(y_des-yy)) # calculate only with new GPS pos
             delta_d=distance-old_d	# delta distance calculation only with new GPS pos
             delta_d2=distance-old_d2
             old_d2=old_d
@@ -545,7 +660,7 @@ def start_control_loop():
                     if tempMOTlimit<50:
                         tempMOTlimit=50
                 else:
-                    tempMOTlimit+=3   # otherwise increase the motor limit
+                    tempMOTlimit+=6   # otherwise increase the motor limit
                     if tempMOTlimit > MOTlimit:
                         tempMOTlimit=MOTlimit  # untill the defined max
                 if distance <2:
@@ -562,7 +677,7 @@ def start_control_loop():
                     wsm.set_vwind(vWind)
                     angWind=-1
                     wsm.set_ang_wind(angWind)
-                if AtPos==1 and distance >6 and goalChanged==0:
+                if AtPos==1 and distance >7 and goalChanged==0:
                     AlertToSend |= (0x01)
                     wsm.set_alert(AlertToSend)
                     AtPos=0
@@ -625,20 +740,20 @@ def start_control_loop():
             firstPosFix=1
             # position control (Astolfi+eurisitc+PID)
             integr_d=limitMotor(0.8*integr_d+0.2*distance,10)  # low pass distance as I term. and limit to 10
-            alpha= set2Range(math.degrees(math.atan2(-yy, -xx))- relativeYaw) # angle to goal
+            alpha= set2Range(math.degrees(math.atan2(y_des-yy, x_des-xx))- relativeYaw) # angle to goal
             integr_a=limitMotor(0.95*integr_a+0.05*alpha,100)  # low pass angle as I term @20Hz
             delta_a=alpha-old_a
             old_a=alpha
             #if ((alpha>-100) and(alpha<100))or(distance>1.5):	# move forward
-            if ((alpha>-110) and(alpha<110))or(distance>1.2):	# move forward
+            if (forceForward==1) or ((alpha>-110) and(alpha<110))or(distance>1.2):	# move forward
                 forwardControl=1
                 if ((alpha<-50) or (alpha>50)):	# direction not good
                     if integr_d>2:
                         integr_d=2 # limit integral part
                 #vel=kd*distance + kdD*delta_d + kdI*integr_d - 2*math.fabs(alpha)
                 distance2=distance
-                if distance>15:
-                    distance2=15
+                if distance>20:
+                    distance2=20
                 vel=kd*distance2 + kdD*delta_d+ kdD*delta_d2 + kdI*integr_d - 1*math.fabs(alpha)
                 if math.fabs(alpha) >80: # first rotate then advance
                     vel=0
@@ -674,6 +789,12 @@ def start_control_loop():
             rot=limitMotor(rot,MOTlimit)
             if distance<1:
                 rot=rot/2  # slower if close
+            if forceForward==1: # Boa di traino...
+                if distance<3:
+                    #rot=rot/2  # slower if close
+                    mR= vel/2
+                    mL= vel/2
+
             # rot= limitIncrement(rot, old_rot, 40*controlT) # better change rotation fast or slow??
             old_rot=rot
             mR += rot
@@ -716,7 +837,18 @@ def start_control_loop():
             else:
                 disableControlAndStop = 0
                 firstDistError = 1
-            
+
+            # limitation from pitch
+            if (pitch>22 and pitch<67) : # 
+                mR=mR *(67-pitch)/45
+                mL=mL *(67-pitch)/45
+            if (pitch>-90 and pitch<-45): # 
+                mR=mR *(pitch+90)/45
+                mL=mL *(pitch+90)/45
+            if (pitch>66 or pitch<-89):
+                mR=0
+                mL=0
+                
             mR_duty=1500 + mR
             wsm.set_mr_duty(int(mR_duty))
             mL_duty=1500 + mL
@@ -746,9 +878,38 @@ def start_control_loop():
             wsm.set_ang_wind(angWind)
             headingDriftFiltered=0
             
-        if controlType ==3:   # yaw stabilization at desired yaw
-            firstPosFix=1
-            
+        # fast LED flahes
+        if fastFlash==1 and controlType==3 and distance<3:   # flash mode IN POSITION
+            ## LED sequence: 1, 0, 0, 0, 1, 20x0  @55ms
+            if led_phase==0 or led_phase==4:
+                strobo.duty_u16(ledPWM*256) # RPi code pwm was between 0..255, now the range is 0..65535
+            else:
+                strobo.duty_u16(0) # PWM off
+            led_phase+=1
+            if led_phase>30:
+                led_phase=0			
+        # fast LED flahes
+        if fastFlash==1 and controlType==3 and distance>=3:   # flash mode IN MOVEMENT
+            ## LED sequence: 1, 0, 0, 0, 1, 20x0  @55ms
+            if led_phase==0 or led_phase==4 or led_phase==8:
+                strobo.duty_u16(ledPWM*256) # RPi code pwm was between 0..255, now the range is 0..65535
+            else:
+                strobo.duty_u16(0) # PWM off
+            led_phase+=1
+            if led_phase>15:
+                led_phase=0			
+        # fast LED flahes
+        if fastFlash==1 and controlType!=3:   # flash mode IN STANDBY
+            ## LED sequence: 1, 0, 0, 0, 1, 20x0  @55ms
+            if led_phase==0:# or led_phase==4:
+                strobo.duty_u16(ledPWM*256) # RPi code pwm was between 0..255, now the range is 0..65535
+            else:
+                strobo.duty_u16(0) # PWM off
+            led_phase+=1
+            if led_phase>30:
+                led_phase=0	        
+
+
     # #SERVO HANDLING
         if stallProtectionRight == 1:
             warnings += ";stallProtectionRight"
@@ -759,10 +920,11 @@ def start_control_loop():
         else:
             mR_duty=int(limitDuty(mR_duty))
             wsm.set_mr_duty(int(mR_duty))
-            mR_duty1= limitIncDec(mR_duty, last_mR_duty, 5) # 5@25Hz, 125 @1Hz
-            if mR_duty1<1486:
+            #mR_duty1= limitIncDec(mR_duty, last_mR_duty, 5) # 5@25Hz, 125 @1Hz
+            mR_duty1= limitIncDec(mR_duty, last_mR_duty, 10) # 10@25Hz, 250 @1Hz
+            if mR_duty1<1480:
                 PWMright.duty_ns((mR_duty1-20)*1000)
-            elif mR_duty1>1510:
+            elif mR_duty1>1525:
                 PWMright.duty_ns((mR_duty1+15)*1000)
             else: #if mR_duty==1500:
                 PWMright.duty_ns(1500_000)
@@ -777,10 +939,11 @@ def start_control_loop():
         else:
             mL_duty=int(limitDuty(mL_duty))
             wsm.set_ml_duty(int(mL_duty))
-            mL_duty1= limitIncDec(mL_duty, last_mL_duty, 5) # 5@25Hz, 125 @1Hz
-            if mL_duty1<1486:
+            #mL_duty1= limitIncDec(mL_duty, last_mL_duty, 5) # 5@25Hz, 125 @1Hz
+            mL_duty1= limitIncDec(mL_duty, last_mL_duty, 10) # 10@25Hz, 250 @1Hz
+            if mL_duty1<1485:
                 PWMleft.duty_ns((mL_duty1-20)*1000)
-            elif mL_duty1>1510:
+            elif mL_duty1>1525:
                 PWMleft.duty_ns((mL_duty1+15)*1000)
             else:#if mL_duty==1500:		
                 PWMleft.duty_ns(1500_000)     # 1500us stop
@@ -791,11 +954,11 @@ def start_control_loop():
         if log_count == 25:# each 25 times: 1Hz
             log_count = 0
 
-            stroboToggle = 1 - stroboToggle
-            if stroboToggle:
-                strobo.on()
-            else:
-                strobo.off()
+            #stroboToggle = 1 - stroboToggle
+            #if stroboToggle:
+            #    strobo.on()
+            #else:
+            #    strobo.off()
             
             if adc != None:
                 try:
@@ -809,33 +972,34 @@ def start_control_loop():
             wsm.set_volt(volt)
             #print(volt)
             volt2=volt+0.07*amp # 0.04*amp
-            #if volt2<14.5 and volt!=0:
-            #    global_status_warnings |= (0x01)
-            #    # send a SMS
-            #    AlertToSend |= (0x08)  # bit4
-            #   wsm.set_alert(AlertToSend)
-            #else:
-            #    global_status_warnings &= ~(0x01)
-            #if volt2<12.2 and volt!=0: # was 13.2V  3V3 per cell
-            #    print("standby because of low voltage")
-            #    # send a SMS
-            #    AlertToSend |= (0x08)  # bit4
-            #   wsm.set_alert(AlertToSend)
-            #    controlType =0   # turn off motors to save batteries
-            #    updateCntrOnDB=1
-            #    global_status_errors |= (0x04)
-            #else:
-            #    global_status_errors &= ~(0x04)
-            #if volt2<11.0 and volt!=0: # was 12.0  3V0 per cell
-            #    # send a SMS
-            #    AlertToSend |= (0x08)
-            #   wsm.set_alert(AlertToSend)
-            #    controlType =0   # should shutdown completely
-            #    updateCntrOnDB=1
-            #    wsm.set_control_type(controlType)            
-            #    print("shutdown")
-            #    time.sleep(2)
-            #    check_call(['sudo', 'poweroff'])
+            if volt2<14.5 and volt!=0:
+                global_status_warnings |= (0x01)
+                # send a SMS
+                AlertToSend |= (0x08)  # bit4
+                wsm.set_alert(AlertToSend)
+            else:
+                global_status_warnings &= ~(0x01)
+            if volt2<12.2 and volt!=0: # was 13.2V  3V3 per cell
+                wsm.print_log("standby because of low voltage\n")
+                # send a SMS
+                AlertToSend |= (0x08)  # bit4
+                wsm.set_alert(AlertToSend)
+                controlType =0   # turn off motors to save batteries
+                wsm.set_control_type(controlType) 
+                updateCntrOnDB=1
+                global_status_errors |= (0x04)
+            else:
+                global_status_errors &= ~(0x04)
+            if volt2<11.0 and volt!=0: # was 12.0  3V0 per cell
+                # send a SMS
+                AlertToSend |= (0x08)
+                wsm.set_alert(AlertToSend)
+                controlType =0   # should shutdown completely
+                updateCntrOnDB=1
+                wsm.set_control_type(controlType)            
+                wsm.print_log("shutdown\n")
+                # time.sleep(2)
+                # check_call(['sudo', 'poweroff'])
 
             if adc != None:
                 try:
@@ -848,14 +1012,14 @@ def start_control_loop():
             #print("curr = " + str(amp))
             if first_measure == 1:
                 first_measure = 0
-                print("I measure[V] = " + str(amp))
+                wsm.print_log("I measure[V] = " + str(amp) + "\n")
                 curr_amp = amp*ADC_TO_AMP
-                print("curr_amp = " + str(curr_amp))
+                wsm.print_log("curr_amp = " + str(curr_amp) + "\n")
                 #if curr_amp > base_consumption_amp:
                 diff_amp = curr_amp - base_consumption_amp
-                print("diff_amp = " + str(diff_amp))
+                wsm.print_log("diff_amp = " + str(diff_amp) + "\n")
                 amp_offset_raw = diff_amp*AMP_TO_ADC
-                print("amp_offset_raw = " + str(amp_offset_raw))
+                wsm.print_log("amp_offset_raw = " + str(amp_offset_raw) + "\n")
                 #else:
                 #	amp_offset_raw = 0
             #print("amp raw = " + str(amp))
@@ -885,8 +1049,12 @@ def start_control_loop():
                 #audio_play_once("/home/pi/Desktop/boa/wav/button_feedback.wav")
                 controlType=3
                 wsm.set_control_type(controlType)
+                xx=0			# reset x y 
+                yy=0                
                 wsm.set_start_lat(lat)
                 wsm.set_start_lon(lon)
+                x_des=0
+                y_des=0                
                 goalChanged=1
                 updateGoalOnDB=1
                 updateCntrOnDB=1
@@ -918,10 +1086,52 @@ def start_control_loop():
                 wsm.set_control_type(controlType)
                 updateCntrOnDB=1
                 warnings+="; button FREE"
+
+            # LED strong flash or sequence
+            if fastFlash==0:
+                ## LED sequence: 0, 0, 1, GPSfix=2, magCal>1 
+                if led_phase==0:
+                    strobo.duty_u16(0) # PWM off
+                if led_phase==1:
+                    strobo.duty_u16(0) # PWM off
+                if led_phase==2:
+                    strobo.duty_u16(65535) # PWM on
+                if (led_phase==3 and FixQuality<2):
+                    strobo.duty_u16(0) # PWM off
+                if led_phase==4:
+                    strobo.duty_u16(0) # PWM off
+                    if magCal>1:
+                        strobo.duty_u16(65535) # PWM on
+                led_phase+=1
+                if led_phase>4:
+                    led_phase=0
+
+            timeGPSstr = timeGPS.decode('utf-8').split('.')[0]
+            #print("timeGPStemp = " + timeGPSstr + ", len=" + str(len(timeGPSstr)) + ", isdigit=" + str(timeGPSstr.isdigit()))
+            #localTime=int(timeGPS[0])*10+int(timeGPS[1])+int(timeGPS[2])*0.16+int(timeGPS[2])*0.166+int(timeGPS[2])*0.0166 # time in h decimal
+            if len(timeGPSstr)==6 and timeGPSstr.isdigit():
+                localTime = int(timeGPSstr[0:2]) + int(timeGPSstr[2:4])*0.0166						
+            else:
+                localTime = 0
+            #print("h decimal = " + str(localTime))            
+            localTime+=lon/15 # UTC time + longitude delta
+            if localTime>24:
+                localTime-=24
+            if localTime<0:
+                localTime+=24
+            day=date_month*30+date_day   # day of the year
+            sunset=4+3*math.sin(day/365.0*3.14)			# very simple estimation of sunset or ~daylight
+            if localTime>=(12-sunset) and localTime<=(12+sunset):
+                ledPWM=255		# max
+            if localTime<=(12-sunset-3) or localTime>=(12+sunset+3):
+                ledPWM=5			# min./sto	
+            if localTime>(12+sunset) and localTime<(12+sunset+3):
+                ledPWM=int(255-(250/3)*(localTime-(12+sunset))	)	# linear
+            if localTime>(12-sunset-3) and localTime<(12-sunset):
+                ledPWM=int(5+(250/3)*(localTime-(12-sunset-3)))		# linear
+            #print(day, sunset, localTime , ledPWM, timeGPS)                    
+
             # SEND MESSAGE
-            xx=wsm.get_delta_lat()
-            yy=wsm.get_delta_lon()
-            headingDriftFiltered=0
             long_message_count = long_message_count + 1
             if(long_message_count == 10): # every 10 seconds
                 long_message_count = 0

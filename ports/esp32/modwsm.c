@@ -361,6 +361,20 @@ mp_obj_t wsm_set_alert(mp_obj_t value) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_alert_obj, wsm_set_alert);
 
+/// \method wsm_get_control_type()
+mp_obj_t wsm_get_mark_id(void) {
+    return mp_obj_new_int_from_ull(get_boaID());  // Safe for 64-bit
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_mark_id_obj, wsm_get_mark_id);
+
+/// \method wsm_set_force_forward()
+mp_obj_t wsm_set_force_forward(mp_obj_t value) {
+    bool val = mp_obj_get_int(value);
+    set_forceForward(val);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_force_forward_obj, wsm_set_force_forward);
+
 static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_wsm) },
 
@@ -401,6 +415,8 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_get_speed_limit), MP_ROM_PTR(&wsm_get_speed_limit_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_speed_limit), MP_ROM_PTR(&wsm_set_speed_limit_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_alert), MP_ROM_PTR(&wsm_set_alert_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_mark_id), MP_ROM_PTR(&wsm_get_mark_id_obj) },
+    { MP_ROM_QSTR(MP_QSTR_set_force_forward), MP_ROM_PTR(&wsm_set_force_forward_obj) },
 };
 
 static MP_DEFINE_CONST_DICT(wsm_module_globals, wsm_module_globals_table);
