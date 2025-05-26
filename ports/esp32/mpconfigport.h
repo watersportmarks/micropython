@@ -128,7 +128,7 @@
 #define MICROPY_PY_MACHINE_ADC_BLOCK_INCLUDEFILE "ports/esp32/machine_adc_block.c"
 #define MICROPY_PY_MACHINE_PIN_MAKE_NEW     mp_pin_make_new
 #define MICROPY_PY_MACHINE_BITSTREAM        (1)
-#define MICROPY_PY_MACHINE_DHT_READINTO     (1)
+#define MICROPY_PY_MACHINE_DHT_READINTO     (0)
 #define MICROPY_PY_MACHINE_PULSE            (1)
 #define MICROPY_PY_MACHINE_PWM              (1)
 #define MICROPY_PY_MACHINE_PWM_DUTY         (1)
@@ -136,8 +136,8 @@
 #define MICROPY_PY_MACHINE_I2C              (1)
 #define MICROPY_PY_MACHINE_I2C_TRANSFER_WRITE1 (1)
 #define MICROPY_PY_MACHINE_SOFTI2C          (1)
-#define MICROPY_PY_MACHINE_SPI              (1)
-#define MICROPY_PY_MACHINE_SOFTSPI          (1)
+#define MICROPY_PY_MACHINE_SPI              (0)
+#define MICROPY_PY_MACHINE_SOFTSPI          (0)
 #ifndef MICROPY_PY_MACHINE_DAC
 #define MICROPY_PY_MACHINE_DAC              (SOC_DAC_SUPPORTED)
 #endif
@@ -145,7 +145,7 @@
 #define MICROPY_PY_MACHINE_I2S              0 //(SOC_I2S_SUPPORTED)
 #endif
 #define MICROPY_PY_MACHINE_I2S_INCLUDEFILE  "ports/esp32/machine_i2s.c"
-#define MICROPY_PY_MACHINE_I2S_FINALISER    (1)
+#define MICROPY_PY_MACHINE_I2S_FINALISER    (0)
 #define MICROPY_PY_MACHINE_I2S_CONSTANT_RX  (I2S_DIR_RX)
 #define MICROPY_PY_MACHINE_I2S_CONSTANT_TX  (I2S_DIR_TX)
 #define MICROPY_PY_MACHINE_UART             (1)
