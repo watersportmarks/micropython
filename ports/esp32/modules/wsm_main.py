@@ -18,35 +18,6 @@ db_access_status=0
 MIN_WIDTH=990		# temporary. otherwise 1100-1900
 MAX_WIDTH=2010
 
-# --- Configurazione dei Pin e Canali RMT ---
-# Scegli i pin GPIO a cui riceverai i segnali RC
-# Assicurati che siano pin GPIO validi per input (es. GPIO 34-39 sono solo input)
-# Evita pin 6, 7, 8, 11 (usati per flash)
-PIN_RX_CHANNEL_1 = 34
-PIN_RX_CHANNEL_2 = 39
-PIN_RX_CHANNEL_3 = 36
-
-# Scegli i canali RMT disponibili (da 0 a 7).
-# L'ESP32 ha 8 canali RMT totali, utilizzabili sia per TX che per RX.
-RMT_RX_CHANNEL_1 = 0
-RMT_RX_CHANNEL_2 = 1
-RMT_RX_CHANNEL_3 = 2
-
-# Risoluzione RMT per la ricezione: Clock diviso per 80 per ottenere 1 microsecondo per tick
-# Source clock dell'ESP32 è 80MHz, 80MHz / 80 = 1MHz -> 1 tick = 1us
-RMT_CLOCK_DIV = 80
-
-# Tempo massimo di attesa per un segnale in microsecondi
-# Un segnale RC ha un periodo di 20ms, quindi 25000us è un valore sicuro per timeout
-# Questo aiuta a prevenire blocchi se il segnale scompare.
-RMT_IDLE_THRES_US = 25000 # 25ms
-
-# Buffer size per i pacchetti RMT ricevuti
-# Ogni coppia (durata_alto, durata_basso) è un elemento.
-# Vogliamo catturare almeno un ciclo completo (alto e basso).
-# Un buffer di 100 può contenere diverse letture consecutive.
-RMT_RX_BUFFER_SIZE = 100
-
 # global variables
 heading = 0	 # from IMU task
 headingFilt = 1000 # Init at 1000 (outside heading range) in order to recognize it need to be set with the sensor value at start
@@ -332,48 +303,7 @@ def read_gps():
     except IndexError: # if data is not transferred properly, don't crash
         pass
     except:
-        pass    
-
-class RCReceiver:
-    def __init__(self, rmt_channel_id, pin_num, clk_div, buffer_size):
-        self.rmt = esp32.RMT(rmt_channel_id, pin=Pin(pin_num), clock_div=clk_div)
-        self.rmt.rx_config(filter_en=True, filter_rx_hold=100) # Filtro per ignorare rumore sotto 100us
-        self.rmt.loop(False) # La ricezione non ha bisogno di loop in hardware
-        self.buffer_size = buffer_size
-
-    def start_receiving(self):
-        """Avvia la ricezione RMT. I dati saranno accumulati nel buffer hardware."""
-        self.rmt.start_rx(self.buffer_size)
-
-    def stop_receiving(self):
-        """Ferma la ricezione RMT."""
-        self.rmt.stop_rx()
-
-    def read_pulse_width(self):
-        """
-        Legge i dati dal buffer RMT e restituisce l'ultima larghezza dell'impulso HIGH trovata.
-        Restituisce None se non ci sono dati validi.
-        """
-        data = self.rmt.read_pulses()
-        if not data:
-            return None # Nessun dato disponibile
-
-        # I dati sono una tupla di (durata, livello) coppie.
-        # Es: ((1500, 1), (18500, 0)) -> impulso alto di 1500us, poi basso di 18500us
-        # L'RMT può catturare diversi cicli completi se il buffer è abbastanza grande.
-        # Ci interessa la durata dell'impulso alto (livello 1).
-        
-        # Cerchiamo l'ultimo impulso alto valido nel buffer.
-        last_high_pulse = None
-        for i in range(len(data) - 1, -1, -1): # Itera al contrario per trovare l'ultimo
-            duration, level = data[i]
-            if level == 1: # Trovato un impulso alto
-                # Consideriamo validi gli impulsi RC tipici (es. 700us a 2300us)
-                if 700 <= duration <= 2300: # Range tipico per RC servo
-                    last_high_pulse = duration
-                    break # Trovato l'ultimo valido, esci dal loop
-
-        return last_high_pulse
+        pass
 
 def start_control_loop():
     global freshGPS, GPSdeltaDist, GPS_HZ, GPSheading, time_refreshGPS, warnings, amp, volt, adc, mAh, headingFilt, global_status_warnings, VOLTAGE_DIVIDER, MIN_WIDTH, MAX_WIDTH, timeGPS, date_day, date_month
@@ -550,24 +480,6 @@ def start_control_loop():
     start = time.ticks_ms()  
 
     wsm.print_log("xGPS; yGPS; heading;(CalMag);  mR, mL, GPSprecision, lat, lon, ,GPStime hhmmss, heading drift, mAh, Volt, Amp\n")
-
-
-    #print("Inizializzazione canali RMT per ricezione...")
-    #rxchtest = esp32.RMT(0, pin=Pin(18), clock_div=80)
-    #rx_channel1 = RCReceiver(RMT_RX_CHANNEL_1, PIN_RX_CHANNEL_1, RMT_CLOCK_DIV, RMT_RX_BUFFER_SIZE)
-    #rx_channel2 = RCReceiver(RMT_RX_CHANNEL_2, PIN_RX_CHANNEL_2, RMT_CLOCK_DIV, RMT_RX_BUFFER_SIZE)
-    #rx_channel3 = RCReceiver(RMT_RX_CHANNEL_3, PIN_RX_CHANNEL_3, RMT_CLOCK_DIV, RMT_RX_BUFFER_SIZE)
-
-    #print(f"Canale RX 1 su GPIO {PIN_RX_CHANNEL_1}, RMT Channel {RMT_RX_CHANNEL_1}")
-    #print(f"Canale RX 2 su GPIO {PIN_RX_CHANNEL_2}, RMT Channel {RMT_RX_CHANNEL_2}")
-    #print(f"Canale RX 3 su GPIO {PIN_RX_CHANNEL_3}, RMT Channel {RMT_RX_CHANNEL_3}")
-    #print("-" * 30)
-
-    ## --- Avvia la ricezione su tutti i canali ---
-    #rx_channel1.start_receiving()
-    #rx_channel2.start_receiving()
-    #rx_channel3.start_receiving()
-
 
     while 1:
         try:
@@ -1288,21 +1200,6 @@ def start_control_loop():
                                 imu_save_cal_count = 0    
                     except:
                         print("imu calib error")
-
-            #pulse1 = rx_channel1.read_pulse_width()
-            #pulse2 = rx_channel2.read_pulse_width()
-            #pulse3 = rx_channel3.read_pulse_width()
-
-            #output_str = ""
-            #if pulse1 is not None:
-            #    output_str += f"Ch1: {pulse1:5} us | "
-            #if pulse2 is not None:
-            #    output_str += f"Ch2: {pulse2:5} us | "
-            #if pulse3 is not None:
-            #    output_str += f"Ch3: {pulse3:5} us"
-
-            #if output_str:
-            #    print(output_str)
 
         # end tasks at 1 Hz
         except Exception as e: # while loop general exception
