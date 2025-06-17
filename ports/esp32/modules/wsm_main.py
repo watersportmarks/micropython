@@ -26,14 +26,14 @@ timeGPS="000001"
 lat=45.8 # gps latitude
 lon=-8.8 # gps longitude
 oldLat=lat; oldLon=lon
-NumSat=0; FixQuality= 0; HorDilPos=1000; freshGPS=0
+NumSat=0; FixQuality= 0; HorDilPos=1000;
 #SNR=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 GPSprecision=99; GPSdeltaDist=0; GPSheading=0
 #SNRsum=0
 warnings=" "
 PhoneNumber=""
 GPSnormPrec=[99, 10, 1.5, 99, 0.1, 0.8, 99,99,99] # normal (best) GPS precision depending on fix quality
-freshGPS=0; GPS_HZ=5; time_refreshGPS=0.1 # time between fresh data
+GPS_HZ=5; time_refreshGPS=0.1 # time between fresh data
 date_day = 0
 date_month = 0
 date_year = 0
@@ -203,7 +203,7 @@ def decode(coord):
 def read_gps():
     global oldLat, oldLon, startTgps, global_status_warnings, nmea_rmc_disabled, warnings
     global lat, lon, timeGPS, FixQuality, GPSdeltaDist
-    global GPSheading, GPSprecision, freshGPS, GPS_HZ
+    global GPSheading, GPSprecision, GPS_HZ
     global date_day, date_month, date_year
     try:
         buflen = int.from_bytes(i2c_read_reg(GPS_I2C_ADDRESS, bufmsb, 2), "big")
@@ -260,53 +260,56 @@ def read_gps():
                         NumSat= 0
                         HorDilPos= 200
                         height= 100
-                    wsm.set_gps_fix_quality(FixQuality)
-                    wsm.set_lat(lat)
-                    wsm.set_lon(lon)
-                    wsm.set_gpstime(timeGPS)
-                    moved_lat = (lat - oldLat) * 111319.4 # last second movement in meter
-                    moved_lon =  111319.4 * (lon -oldLon) * math.cos(math.radians(lat)) # in meter
-                    GPSdeltaDist = math.sqrt(moved_lat*moved_lat + moved_lon*moved_lon) # distance from last fix
-                    wsm.set_gps_delta_dist(GPSdeltaDist)
-                    GPSheading = math.degrees(math.atan2(moved_lon, moved_lat))  # angle of the last second movement
-                    wsm.set_gps_heading(GPSheading)
-                    oldLat=lat
-                    oldLon=lon
-                    delta_lat = (lat - wsm.get_start_lat()) * 111319.4 # from start in meter
-                    wsm.set_delta_lat(delta_lat)
-                    delta_lon =  40075000 * (lon - wsm.get_start_lon()) /360 * math.cos(math.radians(lat)) # in meter
-                    wsm.set_delta_lon(delta_lon)
-                    GPSprecision=GPSnormPrec[int(FixQuality)] * HorDilPos  # simplified estimation of precision in m                    
-                    if GPSprecision>999:
-                        GPSprecision=999
-                    wsm.set_gps_precision(GPSprecision)
-                    time_refreshGPS = time.ticks_ms() - startTgps
-                    time_refreshGPS = time_refreshGPS/1000
-                    #print("time_refreshGPS = " + str(time_refreshGPS))
-                    if time_refreshGPS>2:
-                        time_refreshGPS = 2 # in case time is too long to avoid crazy effects
-                    if time_refreshGPS<0.01:
-                        time_refreshGPS = 0.01 #  to avoid crazy effects   
-                    if time_refreshGPS > 0.8: # 5Hz was not accepted. try again
-                        wsm.print_log("refresh GPS slow:" + str(time_refreshGPS) + "\n")
-                    GPS_HZ=1/time_refreshGPS
+#                    wsm.set_gps_fix_quality(FixQuality)
+#                    wsm.set_lat(lat)
+#                    wsm.set_lon(lon)
+#                    wsm.set_gpstime(timeGPS)
+#                    moved_lat = (lat - oldLat) * 111319.4 # last second movement in meter
+#                    moved_lon =  111319.4 * (lon -oldLon) * math.cos(math.radians(lat)) # in meter
+#                    GPSdeltaDist = math.sqrt(moved_lat*moved_lat + moved_lon*moved_lon) # distance from last fix
+#                    wsm.set_gps_delta_dist(GPSdeltaDist)
+#                    GPSheading = math.degrees(math.atan2(moved_lon, moved_lat))  # angle of the last second movement
+#                    wsm.set_gps_heading(GPSheading)
+#                    oldLat=lat
+#                    oldLon=lon
+#                    delta_lat = (lat - wsm.get_start_lat()) * 111319.4 # from start in meter
+#                    wsm.set_delta_lat(delta_lat)
+#                    delta_lon =  40075000 * (lon - wsm.get_start_lon()) /360 * math.cos(math.radians(lat)) # in meter
+#                    wsm.set_delta_lon(delta_lon)
+#                    GPSprecision=GPSnormPrec[int(FixQuality)] * HorDilPos  # simplified estimation of precision in m                    
+#                    if GPSprecision>999:
+#                        GPSprecision=999
+#                    wsm.set_gps_precision(GPSprecision)
+#                    time_refreshGPS = time.ticks_ms() - startTgps
+#                    time_refreshGPS = time_refreshGPS/1000
+#                    #print("time_refreshGPS = " + str(time_refreshGPS))
+#                    if time_refreshGPS>2:
+#                        time_refreshGPS = 2 # in case time is too long to avoid crazy effects
+#                    if time_refreshGPS<0.01:
+#                        time_refreshGPS = 0.01 #  to avoid crazy effects   
+#                    if time_refreshGPS > 0.8: # 5Hz was not accepted. try again
+#                        wsm.print_log("refresh GPS slow:" + str(time_refreshGPS) + "\n")
+#                    GPS_HZ=1/time_refreshGPS
                     #print("GPS_HZ = " + str(GPS_HZ))
-                    startTgps = time.ticks_ms()
-                    freshGPS=1
-                    if FixQuality > 1: # FixQuality: 0=no fix, 1=minimal, 2=assisted, 3=differential
-                        global_status_warnings &= ~(0x04)
-                    else:
-                        global_status_warnings |= (0x04)                    
+#                    startTgps = time.ticks_ms()
+#                    wsm.set_fresh_gps(True)
+#                    if FixQuality > 1: # FixQuality: 0=no fix, 1=minimal, 2=assisted, 3=differential
+#                        global_status_warnings &= ~(0x04)
+#                    else:
+#                        global_status_warnings |= (0x04)                    
 
-    except UnicodeError: # if stray \xff chars make it into the buffer, don't crash
+    except UnicodeError as e: # if stray \xff chars make it into the buffer, don't crash
+        print("UnicodeError: " + str(e))
         pass
-    except IndexError: # if data is not transferred properly, don't crash
+    except IndexError as e: # if data is not transferred properly, don't crash
+        print("IndexError: " + str(e))
         pass
-    except:
+    except Exception as e:
+        print("readgps err: " + str(e))
         pass
 
 def start_control_loop():
-    global freshGPS, GPSdeltaDist, GPS_HZ, GPSheading, time_refreshGPS, warnings, amp, volt, adc, mAh, headingFilt, global_status_warnings, VOLTAGE_DIVIDER, MIN_WIDTH, MAX_WIDTH, timeGPS, date_day, date_month
+    global GPSdeltaDist, GPS_HZ, GPSheading, time_refreshGPS, warnings, amp, volt, adc, mAh, headingFilt, global_status_warnings, VOLTAGE_DIVIDER, MIN_WIDTH, MAX_WIDTH, timeGPS, date_day, date_month, bno
 
     MOTlimit = 500
     SOFT_ACC_STEP = 2 # When goal changed, for 10 seconds is active
@@ -410,7 +413,9 @@ def start_control_loop():
     led_phase = 0
     ledPWM = 1
     conf_shunt_low = 0
-    
+    freshGPS = 0 # this variable is defined to read from BT if connected, but then it is not used because handled from C side (set_fresh_gps/get_fresh_gps). It shuuld be deleted after modfiyng the "bt_updated" function.
+    bnoErrorCount = 0
+
     boaID = wsm.get_mark_id()
     print("boa id = " + str(boaID))
     wsm.print_log("boa id = " + str(boaID) + "\r\n")
@@ -419,11 +424,17 @@ def start_control_loop():
     if boaID == 220100304702492: # 5B
         IMUupsidedown_back = 1
 
+    if boaID == 220100304698904: # 5D
+        IMUupsidedown_back = 1
+
     if boaID == 220100304698944: # 5F 
         conf_shunt_low = 1
 
     if boaID == 220100304698868: # 6A
         conf_shunt_low = 1
+
+    if boaID == 220100304703464: # 6B
+        IMUupsidedown_back = 1
 
     wsm.set_force_forward(forceForward)
 
@@ -512,7 +523,7 @@ def start_control_loop():
 
             if wsm.bt_updated():
                 desFW, yawStart, controlType, start_lat, start_lon, goalChanged, xx, yy, delta_lat, delta_lon, freshGPS, x_des, y_des, k_headingDrift = wsm.get_bt_update()
-            
+                #print("desFW = " + str(desFW))
             #******* read imu at 25Hz
             #print("bno.euler = " + str(bno.euler))
             #start = time.ticks_ms()
@@ -521,8 +532,17 @@ def start_control_loop():
                     roll, pitch, P, confidence = bno.euler
                     #print("roll = " + str(int(roll)))
                     #print("pitch = " + str(int(pitch)))
-                except:
-                    print("imu read error")
+                    bnoErrorCount = 0
+                except Exception as e:
+                    print("imu read error: " + str(e))
+                    bnoErrorCount = bnoErrorCount + 1
+                    if bnoErrorCount == 3:
+                        bnoErrorCount = 0
+                        #print("reinit bno...")
+                        wsm.print_log("reinit bno...")
+                        bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
+                        bno.calibration() # calibrate accel + mag
+                        bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms
             else:
                 roll = 0
                 pitch = 0
@@ -577,10 +597,10 @@ def start_control_loop():
             #delta_gps = time.ticks_diff(time.ticks_ms(), start_gps) # compute time difference
             #delta_time[log_count] = delta_gps
             #print("gps time = " + str(delta_gps))
-            if freshGPS==1:
+            if wsm.get_fresh_gps():
                 #headingDrift filter decay
                 if headingDriftFiltered>0:
-                    #headingDriftFiltered-=(0.15 * time_refreshGPS)
+                    #headingDrfreshGPSiftFiltered-=(0.15 * time_refreshGPS)
                     headingDriftFiltered-=(1.5 * time_refreshGPS)
                     if headingDriftFiltered<0:	# passed from + to - as security set to 0
                         headingDriftFiltered=0
@@ -652,10 +672,10 @@ def start_control_loop():
                 angWind=-1
                 wsm.set_ang_wind(angWind)
 
-            if freshGPS==1:
+            if wsm.get_fresh_gps():
                 SPEEDlimit = wsm.get_speed_limit()
                 #print("SPEEDlimit = " + str(SPEEDlimit))
-                freshGPS=0
+                wsm.set_fresh_gps(False)
                 delta_lat = wsm.get_delta_lat()
                 delta_lon = wsm.get_delta_lon()
                 xx = delta_lat
@@ -1055,7 +1075,7 @@ def start_control_loop():
                 
                 # Buttons
                 if FIXButton.value()==0: # FIX BUTTON PUSHED
-                    #print("btnPushed")
+                    print("fixPushed")
                     btnPushed = True
                     btnCounter = 0
                     audio_en.on()
@@ -1077,10 +1097,8 @@ def start_control_loop():
                     warnings+="; button FIX"
                     wsm.set_delta_lat(0)
                     wsm.set_delta_lon(0)
-                    wsm.set_delta_lat(0)
-                    wsm.set_delta_lon(0)
                 if freeButton.value()==0: # FREE BUTTON PUSHED
-                    #print("btnPushed")
+                    print("freePushed")
                     btnPushed = True
                     btnCounter = 0
                     audio_en.on()
@@ -1203,6 +1221,7 @@ def start_control_loop():
 
         # end tasks at 1 Hz
         except Exception as e: # while loop general exception
+            print("while loop error " + str(e))
             wsm.print_log("while loop error " + str(e))
 
          

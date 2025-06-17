@@ -375,6 +375,20 @@ mp_obj_t wsm_set_force_forward(mp_obj_t value) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_force_forward_obj, wsm_set_force_forward);
 
+/// \method wsm_get_fresh_gps()
+mp_obj_t wsm_get_fresh_gps(void) {
+    return mp_obj_new_bool(get_freshGPS());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_fresh_gps_obj, wsm_get_fresh_gps);
+
+/// \method wsm_set_freshGPS()
+mp_obj_t wsm_set_fresh_gps(mp_obj_t value) {
+    bool val = mp_obj_is_true(value);
+    set_freshGPS(val);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_fresh_gps_obj, wsm_set_fresh_gps);
+
 static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_wsm) },
 
@@ -417,6 +431,8 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_set_alert), MP_ROM_PTR(&wsm_set_alert_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_mark_id), MP_ROM_PTR(&wsm_get_mark_id_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_force_forward), MP_ROM_PTR(&wsm_set_force_forward_obj) },
+    { MP_ROM_QSTR(MP_QSTR_set_fresh_gps), MP_ROM_PTR(&wsm_set_fresh_gps_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_fresh_gps), MP_ROM_PTR(&wsm_get_fresh_gps_obj) },
 };
 
 static MP_DEFINE_CONST_DICT(wsm_module_globals, wsm_module_globals_table);
