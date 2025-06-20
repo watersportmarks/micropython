@@ -8,6 +8,7 @@ import wsm
 import os
 from machine import WDT
 import esp32
+import bmm150
 
 # Constants
 GPS_I2C_ADDRESS = 0x42
@@ -33,7 +34,7 @@ GPSprecision=99; GPSdeltaDist=0; GPSheading=0
 warnings=" "
 PhoneNumber=""
 GPSnormPrec=[99, 10, 1.5, 99, 0.1, 0.8, 99,99,99] # normal (best) GPS precision depending on fix quality
-GPS_HZ=5; time_refreshGPS=0.1 # time between fresh data
+GPS_HZ=5; time_refreshGPS=0.2 # time between fresh data
 date_day = 0
 date_month = 0
 date_year = 0
@@ -143,6 +144,13 @@ try:
 except:
     print("Cannot init GPS")
     pass
+
+# Magnetometer init
+mag_degrees = 0
+mag_offsets_max = [-1000, -1000, -1000]
+mag_offsets_min = [1000, 1000, 1000]
+mag_offsets = [0, 0, 0]
+bmm = bmm150.BMM150(i2c, address=0x10)
 
 def set2Range(angle):
     if angle > 180:
@@ -308,8 +316,42 @@ def read_gps():
         print("readgps err: " + str(e))
         pass
 
+def read_compass():
+    global mag_degrees
+    try:
+        magx, magy, magz, _ = bmm.measurements
+        #print(f"x: {magx}uT, y: {magy}uT, z:{magz}uT")
+
+        if freeButton.value()==0: # FREE BUTTON PUSHED
+            if(mag_offsets_max[0] < magx):
+                mag_offsets_max[0] = magx
+            if(mag_offsets_max[1] < magy):
+                mag_offsets_max[1] = magy
+            if(mag_offsets_max[2] < magz):
+                mag_offsets_max[2] = magz
+            if(mag_offsets_min[0] > magx):
+                mag_offsets_min[0] = magx
+            if(mag_offsets_min[1] > magy):
+                mag_offsets_min[1] = magy
+            if(mag_offsets_min[2] > magz):
+                mag_offsets_min[2] = magz  
+            mag_offsets[0] = (mag_offsets_max[0] + mag_offsets_min[0])/2
+            mag_offsets[1] = (mag_offsets_max[1] + mag_offsets_min[1])/2
+            mag_offsets[2] = (mag_offsets_max[2] + mag_offsets_min[2])/2
+            #print("mag offsets: " + str(mag_offsets))
+
+        compass = math.atan2(magx-mag_offsets[0], magy-mag_offsets[1])
+        if compass < 0:
+            compass += 2 * math.pi
+        if compass > 2 * math.pi:
+            compass -= 2 * math.pi    
+        mag_degrees = compass * 180 / math.pi 
+        #print("mag heading:  %.2f "%mag_degrees)
+    except Exception as e:
+        print("error reading magnetometer " + str(e))
+
 def start_control_loop():
-    global GPSdeltaDist, GPS_HZ, GPSheading, time_refreshGPS, warnings, amp, volt, adc, mAh, headingFilt, global_status_warnings, VOLTAGE_DIVIDER, MIN_WIDTH, MAX_WIDTH, timeGPS, date_day, date_month, bno
+    global GPSdeltaDist, GPS_HZ, GPSheading, GPSprecision, time_refreshGPS, warnings, amp, volt, adc, mAh, headingFilt, global_status_warnings, VOLTAGE_DIVIDER, MIN_WIDTH, MAX_WIDTH, timeGPS, date_day, date_month, bno, mag_degrees
 
     MOTlimit = 500
     SOFT_ACC_STEP = 2 # When goal changed, for 10 seconds is active
@@ -490,7 +532,7 @@ def start_control_loop():
 
     start = time.ticks_ms()  
 
-    wsm.print_log("xGPS; yGPS; heading;(CalMag);  mR, mL, GPSprecision, lat, lon, ,GPStime hhmmss, heading drift, mAh, Volt, Amp\n")
+    wsm.print_log("xGPS; yGPS; heading;(CalMag);  mR, mL, GPSprecision, lat, lon, ,GPStime hhmmss, heading drift, mAh, Volt, Amp, Mag\n")
 
     while 1:
         try:
@@ -586,6 +628,8 @@ def start_control_loop():
 
         #     option to save IMU calibration below in tasks at 1HZ
 
+            read_compass()
+
             #******* read GPS (when data ready) at 5Hz
             # When data available:
             # - with micropyGPS library read takes about 33-35 ms
@@ -598,6 +642,9 @@ def start_control_loop():
             #delta_time[log_count] = delta_gps
             #print("gps time = " + str(delta_gps))
             if wsm.get_fresh_gps():
+                GPSdeltaDist = wsm.get_gps_delta_dist()
+                GPSheading = wsm.get_gps_heading()
+                GPSprecision = wsm.get_gps_precision()
                 #headingDrift filter decay
                 if headingDriftFiltered>0:
                     #headingDrfreshGPSiftFiltered-=(0.15 * time_refreshGPS)
@@ -1086,8 +1133,10 @@ def start_control_loop():
                     wsm.set_control_type(controlType)
                     xx=0			# reset x y 
                     yy=0                
-                    wsm.set_start_lat(lat)
-                    wsm.set_start_lon(lon)
+                    #wsm.set_start_lat(lat) # when using u-blox gps
+                    #wsm.set_start_lon(lon) # when using u-blox gps
+                    wsm.set_start_lat(wsm.get_lat()) # when using SIM7600 gps
+                    wsm.set_start_lon(wsm.get_lon()) # when using SIM7600 gps
                     x_des=0
                     y_des=0                
                     goalChanged=1
@@ -1179,9 +1228,9 @@ def start_control_loop():
                 long_message_count = long_message_count + 1
                 if(long_message_count == 10): # every 10 seconds
                     long_message_count = 0
-                    longMessage="%1.2f;%1.2f;%3.0f;(%d);%1.0f;%1.0f;%.1f;%.7f;%.7f;%d;%.0f;%.1f;%.2f;%.1f" % (xx,yy,heading, magCal,mR_duty-1500,mL_duty-1500, GPSprecision, lat, lon,int(float(timeGPSstr)),headingDriftFiltered,mAh,volt,amp)
+                    longMessage="%1.2f;%1.2f;%3.0f;(%d);%1.0f;%1.0f;%.1f;%.7f;%.7f;%d;%.0f;%.1f;%.2f;%.1f;%3.0f" % (xx,yy,heading, magCal,mR_duty-1500,mL_duty-1500, GPSprecision, lat, lon,int(float(timeGPSstr)),headingDriftFiltered,mAh,volt,amp,mag_degrees)
                 else:
-                    longMessage="%1.2f;%1.2f;%3.0f;%1.0f;%1.0f;%.0f;%.1f" % (xx,yy,heading, mR_duty-1500,mL_duty-1500,headingDriftFiltered,amp)	
+                    longMessage="%1.2f;%1.2f;%3.0f;%1.0f;%1.0f;%.0f;%.1f;%3.0f" % (xx,yy,heading, mR_duty-1500,mL_duty-1500,headingDriftFiltered,amp,mag_degrees)	
                 #confidence
                 #print(longMessage+warnings)
                 

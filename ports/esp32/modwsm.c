@@ -389,6 +389,36 @@ mp_obj_t wsm_set_fresh_gps(mp_obj_t value) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_fresh_gps_obj, wsm_set_fresh_gps);
 
+/// \method wsm_get_gps_delta_dist()
+mp_obj_t wsm_get_gps_delta_dist(void) {
+    return mp_obj_new_float(get_GPSdeltaDist());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_gps_delta_dist_obj, wsm_get_gps_delta_dist);
+
+/// \method wsm_get_gps_heading()
+mp_obj_t wsm_get_gps_heading(void) {
+    return mp_obj_new_float(get_GPSheading());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_gps_heading_obj, wsm_get_gps_heading);
+
+/// \method wsm_get_gps_precision()
+mp_obj_t wsm_get_gps_precision(void) {
+    return mp_obj_new_float(get_GPSprecision());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_gps_precision_obj, wsm_get_gps_precision);
+
+/// \method wsm_get_lat()
+mp_obj_t wsm_get_lat(void) {
+    return mp_obj_new_float(get_lat());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_lat_obj, wsm_get_lat);
+
+/// \method wsm_get_lon()
+mp_obj_t wsm_get_lon(void) {
+    return mp_obj_new_float(get_lon());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_lon_obj, wsm_get_lon);
+
 static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_wsm) },
 
@@ -433,6 +463,11 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_set_force_forward), MP_ROM_PTR(&wsm_set_force_forward_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_fresh_gps), MP_ROM_PTR(&wsm_set_fresh_gps_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_fresh_gps), MP_ROM_PTR(&wsm_get_fresh_gps_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_gps_delta_dist), MP_ROM_PTR(&wsm_get_gps_delta_dist_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_gps_heading), MP_ROM_PTR(&wsm_get_gps_heading_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_gps_precision), MP_ROM_PTR(&wsm_get_gps_precision_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_lat), MP_ROM_PTR(&wsm_get_lat_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_lon), MP_ROM_PTR(&wsm_get_lon_obj) },    
 };
 
 static MP_DEFINE_CONST_DICT(wsm_module_globals, wsm_module_globals_table);
