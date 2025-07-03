@@ -314,11 +314,23 @@ mp_obj_t wsm_get_delta_lat(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_delta_lat_obj, wsm_get_delta_lat);
 
+/// \method wsm_get_delta_lat_sim7600()
+mp_obj_t wsm_get_delta_lat_sim7600(void) {
+    return mp_obj_new_float(get_delta_lat_sim7600());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_delta_lat_sim7600_obj, wsm_get_delta_lat_sim7600);
+
 /// \method wsm_get_delta_lon()
 mp_obj_t wsm_get_delta_lon(void) {
     return mp_obj_new_float(get_delta_lon());
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_delta_lon_obj, wsm_get_delta_lon);
+
+/// \method wsm_get_delta_lon_sim7600()
+mp_obj_t wsm_get_delta_lon_sim7600(void) {
+    return mp_obj_new_float(get_delta_lon_sim7600());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_delta_lon_sim7600_obj, wsm_get_delta_lon_sim7600);
 
 /// \method wsm_get_start_lat()
 mp_obj_t wsm_get_start_lat(void) {
@@ -381,6 +393,12 @@ mp_obj_t wsm_get_fresh_gps(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_fresh_gps_obj, wsm_get_fresh_gps);
 
+/// \method wsm_get_fresh_gps_sim7600()
+mp_obj_t wsm_get_fresh_gps_sim7600(void) {
+    return mp_obj_new_bool(get_freshGPS_sim7600());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_fresh_gps_sim7600_obj, wsm_get_fresh_gps_sim7600);
+
 /// \method wsm_set_freshGPS()
 mp_obj_t wsm_set_fresh_gps(mp_obj_t value) {
     bool val = mp_obj_is_true(value);
@@ -389,11 +407,25 @@ mp_obj_t wsm_set_fresh_gps(mp_obj_t value) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_fresh_gps_obj, wsm_set_fresh_gps);
 
+/// \method wsm_set_freshGPS_sim7600()
+mp_obj_t wsm_set_fresh_gps_sim7600(mp_obj_t value) {
+    bool val = mp_obj_is_true(value);
+    set_freshGPS_sim7600(val);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_fresh_gps_sim7600_obj, wsm_set_fresh_gps_sim7600);
+
 /// \method wsm_get_gps_delta_dist()
 mp_obj_t wsm_get_gps_delta_dist(void) {
     return mp_obj_new_float(get_GPSdeltaDist());
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_gps_delta_dist_obj, wsm_get_gps_delta_dist);
+
+/// \method wsm_get_gps_delta_dist_sim7600()
+mp_obj_t wsm_get_gps_delta_dist_sim7600(void) {
+    return mp_obj_new_float(get_GPSdeltaDist_sim7600());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_gps_delta_dist_sim7600_obj, wsm_get_gps_delta_dist_sim7600);
 
 /// \method wsm_get_gps_heading()
 mp_obj_t wsm_get_gps_heading(void) {
@@ -401,11 +433,23 @@ mp_obj_t wsm_get_gps_heading(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_gps_heading_obj, wsm_get_gps_heading);
 
+/// \method wsm_get_gps_heading_sim7600()
+mp_obj_t wsm_get_gps_heading_sim7600(void) {
+    return mp_obj_new_float(get_GPSheading_sim7600());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_gps_heading_sim7600_obj, wsm_get_gps_heading_sim7600);
+
 /// \method wsm_get_gps_precision()
 mp_obj_t wsm_get_gps_precision(void) {
     return mp_obj_new_float(get_GPSprecision());
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_gps_precision_obj, wsm_get_gps_precision);
+
+/// \method wsm_get_gps_precision_sim7600()
+mp_obj_t wsm_get_gps_precision_sim7600(void) {
+    return mp_obj_new_float(get_GPSprecision_sim7600());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_gps_precision_sim7600_obj, wsm_get_gps_precision_sim7600);
 
 /// \method wsm_get_lat()
 mp_obj_t wsm_get_lat(void) {
@@ -413,11 +457,53 @@ mp_obj_t wsm_get_lat(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_lat_obj, wsm_get_lat);
 
+/// \method wsm_get_lat_sim7600()
+mp_obj_t wsm_get_lat_sim7600(void) {
+    return mp_obj_new_float(get_lat_sim7600());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_lat_sim7600_obj, wsm_get_lat_sim7600);
+
 /// \method wsm_get_lon()
 mp_obj_t wsm_get_lon(void) {
     return mp_obj_new_float(get_lon());
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_lon_obj, wsm_get_lon);
+
+/// \method wsm_get_lon_sim7600()
+mp_obj_t wsm_get_lon_sim7600(void) {
+    return mp_obj_new_float(get_lon_sim7600());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_lon_sim7600_obj, wsm_get_lon_sim7600);
+
+/// \method wsm_set_mag_degrees()
+mp_obj_t wsm_set_mag_degrees(mp_obj_t value) {
+    float val = mp_obj_get_float(value);
+    set_mag_degrees(val);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_mag_degrees_obj, wsm_set_mag_degrees);
+
+/// \method wsm_get_mag_degrees()
+mp_obj_t wsm_get_mag_degrees(void) {
+    return mp_obj_new_float(get_mag_degrees());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_mag_degrees_obj, wsm_get_mag_degrees);
+
+/// \method wsm_set_pitch()
+mp_obj_t wsm_set_pitch(mp_obj_t value) {
+    float val = mp_obj_get_float(value);
+    set_pitch(val);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_pitch_obj, wsm_set_pitch);
+
+/// \method wsm_use_gps_sim7600()
+mp_obj_t wsm_use_gps_sim7600(mp_obj_t value) {
+    bool val = mp_obj_get_int(value);
+    set_useGpsSim7600(val);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_use_gps_sim7600_obj, wsm_use_gps_sim7600);
 
 static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_wsm) },
@@ -452,7 +538,9 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_set_start_lat), MP_ROM_PTR(&wsm_set_start_lat_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_start_lon), MP_ROM_PTR(&wsm_set_start_lon_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_delta_lat), MP_ROM_PTR(&wsm_get_delta_lat_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_delta_lat_sim7600), MP_ROM_PTR(&wsm_get_delta_lat_sim7600_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_delta_lon), MP_ROM_PTR(&wsm_get_delta_lon_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_delta_lon_sim7600), MP_ROM_PTR(&wsm_get_delta_lon_sim7600_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_start_lat), MP_ROM_PTR(&wsm_get_start_lat_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_start_lon), MP_ROM_PTR(&wsm_get_start_lon_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_gpstime), MP_ROM_PTR(&wsm_set_gpstime_obj) },
@@ -462,12 +550,23 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_get_mark_id), MP_ROM_PTR(&wsm_get_mark_id_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_force_forward), MP_ROM_PTR(&wsm_set_force_forward_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_fresh_gps), MP_ROM_PTR(&wsm_set_fresh_gps_obj) },
+    { MP_ROM_QSTR(MP_QSTR_set_fresh_gps_sim7600), MP_ROM_PTR(&wsm_set_fresh_gps_sim7600_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_fresh_gps), MP_ROM_PTR(&wsm_get_fresh_gps_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_fresh_gps_sim7600), MP_ROM_PTR(&wsm_get_fresh_gps_sim7600_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_gps_delta_dist), MP_ROM_PTR(&wsm_get_gps_delta_dist_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_gps_delta_dist_sim7600), MP_ROM_PTR(&wsm_get_gps_delta_dist_sim7600_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_gps_heading), MP_ROM_PTR(&wsm_get_gps_heading_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_gps_heading_sim7600), MP_ROM_PTR(&wsm_get_gps_heading_sim7600_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_gps_precision), MP_ROM_PTR(&wsm_get_gps_precision_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_gps_precision_sim7600), MP_ROM_PTR(&wsm_get_gps_precision_sim7600_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_lat), MP_ROM_PTR(&wsm_get_lat_obj) },
-    { MP_ROM_QSTR(MP_QSTR_get_lon), MP_ROM_PTR(&wsm_get_lon_obj) },    
+    { MP_ROM_QSTR(MP_QSTR_get_lat_sim7600), MP_ROM_PTR(&wsm_get_lat_sim7600_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_lon), MP_ROM_PTR(&wsm_get_lon_obj) },   
+    { MP_ROM_QSTR(MP_QSTR_get_lon_sim7600), MP_ROM_PTR(&wsm_get_lon_sim7600_obj) },  
+    { MP_ROM_QSTR(MP_QSTR_set_mag_degrees), MP_ROM_PTR(&wsm_set_mag_degrees_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_mag_degrees), MP_ROM_PTR(&wsm_get_mag_degrees_obj) },    
+    { MP_ROM_QSTR(MP_QSTR_set_pitch), MP_ROM_PTR(&wsm_set_pitch_obj) },
+    { MP_ROM_QSTR(MP_QSTR_use_gps_sim7600), MP_ROM_PTR(&wsm_use_gps_sim7600_obj) },
 };
 
 static MP_DEFINE_CONST_DICT(wsm_module_globals, wsm_module_globals_table);
