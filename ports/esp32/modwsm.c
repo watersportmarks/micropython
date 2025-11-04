@@ -505,6 +505,36 @@ mp_obj_t wsm_use_gps_sim7600(mp_obj_t value) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(wsm_use_gps_sim7600_obj, wsm_use_gps_sim7600);
 
+/// \method wsm_get_goal_changed()
+mp_obj_t wsm_get_goal_changed(void) {
+    return mp_obj_new_bool(get_goalChanged());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_goal_changed_obj, wsm_get_goal_changed);
+
+/// \method wsm_set_goal_changed()
+mp_obj_t wsm_set_goal_changed(mp_obj_t value) {
+    bool val = mp_obj_is_true(value);
+    set_goalChanged(val);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_goal_changed_obj, wsm_set_goal_changed);
+
+/// \method wsm_set_delta_lat_sim7600()
+mp_obj_t wsm_set_delta_lat_sim7600(mp_obj_t value) {
+    double val = mp_obj_get_float(value);
+    set_delta_lat_sim7600(val);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_delta_lat_sim7600_obj, wsm_set_delta_lat_sim7600);
+
+/// \method wsm_set_delta_lon_sim7600()
+mp_obj_t wsm_set_delta_lon_sim7600(mp_obj_t value) {
+    double val = mp_obj_get_float(value);
+    set_delta_lon_sim7600(val);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_delta_lon_sim7600_obj, wsm_set_delta_lon_sim7600);
+
 static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_wsm) },
 
@@ -567,6 +597,10 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_get_mag_degrees), MP_ROM_PTR(&wsm_get_mag_degrees_obj) },    
     { MP_ROM_QSTR(MP_QSTR_set_pitch), MP_ROM_PTR(&wsm_set_pitch_obj) },
     { MP_ROM_QSTR(MP_QSTR_use_gps_sim7600), MP_ROM_PTR(&wsm_use_gps_sim7600_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_goal_changed), MP_ROM_PTR(&wsm_get_goal_changed_obj) },
+    { MP_ROM_QSTR(MP_QSTR_set_goal_changed), MP_ROM_PTR(&wsm_set_goal_changed_obj) },
+    { MP_ROM_QSTR(MP_QSTR_set_delta_lat_sim7600), MP_ROM_PTR(&wsm_set_delta_lat_sim7600_obj) },
+    { MP_ROM_QSTR(MP_QSTR_set_delta_lon_sim7600), MP_ROM_PTR(&wsm_set_delta_lon_sim7600_obj) },    
 };
 
 static MP_DEFINE_CONST_DICT(wsm_module_globals, wsm_module_globals_table);

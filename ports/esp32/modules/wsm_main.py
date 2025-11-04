@@ -372,7 +372,6 @@ def start_control_loop():
     imu_cal_done_count = 0
     amp_offset_raw = 0
     base_consumption_amp = 0.1
-    first_measure = 1
     btnPushed = False
     btnCounter = 0
     #stroboToggle = 0
@@ -463,32 +462,56 @@ def start_control_loop():
     fastFlash = 1
     led_phase = 0
     ledPWM = 1
-    conf_shunt_low = 0
+    conf_shunt_low = 1
     freshGPS = 0 # this variable is defined to read from BT if connected, but then it is not used because handled from C side (set_fresh_gps/get_fresh_gps). It shuuld be deleted after modfiyng the "bt_updated" function.
     bnoErrorCount = 0
     useGpsSim7600 = False
     wsm.use_gps_sim7600(useGpsSim7600)
     useMagBmm150 = False
+    ampMeasureCount = 10 # Start measuring base consumption after 10 seconds
+    ampMeasureState = 0
+    ampMeasureMin = 32000.0
+    ampMeasureNum = 0
+    escType = 0 # 0=normal, 1=waterproof ESC
 
     boaID = wsm.get_mark_id()
     print("boa id = " + str(boaID))
     wsm.print_log("boa id = " + str(boaID) + "\r\n")
 
     # Change PID control parameters, ...
-    if boaID == 220100304702492: # 5B
+
+    if boaID == 220100304698896: # 120
+        conf_shunt_low = 0
+
+    if boaID == 220100304698936: # 128
+        conf_shunt_low = 0
+
+    if boaID == 220100304698880: # p11
+        conf_shunt_low = 0
+
+    if boaID == 220100304702492: # p12
         IMUupsidedown_back = 1
+        conf_shunt_low = 0
 
     if boaID == 220100304698904: # 5D
         IMUupsidedown_back = 1
+        conf_shunt_low = 0
+        escType = 1  # waterproof ESC
 
-    if boaID == 220100304698944: # 5F 
-        conf_shunt_low = 1
-
-    if boaID == 220100304698868: # 6A
-        conf_shunt_low = 1
-
-    if boaID == 220100304703464: # 6B
+    if boaID == 220100304703464: # 6B/125
         IMUupsidedown_back = 1
+        escType = 1  # waterproof ESC
+
+    if boaID == 154270941121492: # 135
+        IMUupsidedown_back = 1
+        escType = 1  # waterproof ESC
+
+    if boaID == 154270941103312: # 130
+        IMUupsidedown_back = 1
+        escType = 1  # waterproof ESC
+
+    if boaID == 220100304698944: # 106
+        escType = 1  # waterproof ESC
 
     wsm.set_force_forward(forceForward)
 
@@ -540,6 +563,9 @@ def start_control_loop():
         kdI=0 # k for integr distance
         kWind=1.0
 
+    if escType==1: # waterproof esc
+        limitAmp = 35
+
     wdt = WDT(timeout=10000)  # enable it with a timeout of 10s
 
     start = time.ticks_ms()  
@@ -577,6 +603,7 @@ def start_control_loop():
 
             if wsm.bt_updated():
                 desFW, yawStart, controlType, start_lat, start_lon, goalChanged, xx, yy, delta_lat, delta_lon, freshGPS, x_des, y_des, k_headingDrift = wsm.get_bt_update()
+            goalChanged = wsm.get_goal_changed()
                 #print("desFW = " + str(desFW))
             #******* read imu at 25Hz
             #print("bno.euler = " + str(bno.euler))
@@ -778,6 +805,7 @@ def start_control_loop():
                         AtPos=0
                         goalChanged=0
                         goalChangedCounter = 0
+                        wsm.set_goal_changed(0)
                     if distance > 7: #no valid wind estimation
                         vWind=-1
                         wsm.set_vwind(vWind)
@@ -791,7 +819,7 @@ def start_control_loop():
                     ## alert for abnormal rotation reaction, maybe 1 motor blocked or damaged
                     if rot>90 and delta_a<5 :
                         rotProblCounterR+=1
-                        if rotProblCounterR>30:
+                        if rotProblCounterR>90:
                             rotProblCounterR=0
                             warnings+="motR~?" + str(int(rot)) + "; " + str(int(delta_a))
                             AlertToSend |= (0x02)
@@ -804,7 +832,7 @@ def start_control_loop():
                             rotProblCounterR=0
                     if rot<-90 and delta_a>-5 :
                         rotProblCounterL+=1
-                        if rotProblCounterL>30:
+                        if rotProblCounterL>90:
                             rotProblCounterL=0
                             warnings+="motL~?" + str(int(rot)) + "; " + str(int(delta_a))
                             AlertToSend |= (0x04)
@@ -862,7 +890,7 @@ def start_control_loop():
                         distance2=20
                     vel=kd*distance2 + kdD*delta_d+ kdD*delta_d2 + kdI*integr_d - 1*math.fabs(alpha)
                     if math.fabs(alpha) >80: # first rotate then advance
-                        vel=0
+                        vel=0.2*vel
                     if vel<0:
                         vel=0
                 else:
@@ -906,7 +934,7 @@ def start_control_loop():
                 mR += rot
                 mL += -rot
                 # if not too close, avoid turning on spot with negative motor speed
-                if forwardControl==1 and distance>0.6 and vel<math.fabs(rot) and math.fabs(alpha)<70:
+                if forwardControl==1 and distance>2.0 and vel<math.fabs(rot): # and math.fabs(alpha)<70:
                     if mR<0:
                         mL=mL-mR # add instead both speeds to 1 motor while the other at 0
                         mR=0
@@ -1069,7 +1097,7 @@ def start_control_loop():
                 if adc != None:
                     try:
                         adc.gain = 1 # 1x 4.096V
-                        volt = adc.read(4,0)
+                        volt = float(adc.read(4,0))
                     except:
                         volt = 0
                 else:
@@ -1110,32 +1138,47 @@ def start_control_loop():
                 if adc != None:
                     try:
                         adc.gain = 5 # 16x (0.256V)
-                        amp = adc.read(4,1)
+                        amp = float(adc.read(4,1))
+                        #print("amp adc = " + str(amp))
                         if conf_shunt_low == 1:
-                            amp = amp*5                                     
+                            amp = amp*6.0                                  
                     except:
-                        amp = 0
+                        amp = 0.0
                 else:
-                    amp = 0
-                #print("curr = " + str(amp))
-                if first_measure == 1:
-                    first_measure = 0
-                    wsm.print_log("I measure[V] = " + str(amp) + "\n")
-                    curr_amp = amp*ADC_TO_AMP
-                    wsm.print_log("curr_amp = " + str(curr_amp) + "\n")
-                    #if curr_amp > base_consumption_amp:
-                    diff_amp = curr_amp - base_consumption_amp
-                    wsm.print_log("diff_amp = " + str(diff_amp) + "\n")
-                    amp_offset_raw = diff_amp*AMP_TO_ADC
-                    wsm.print_log("amp_offset_raw = " + str(amp_offset_raw) + "\n")
-                    #else:
-                    #	amp_offset_raw = 0
+                    amp = 0.0
                 #print("amp raw = " + str(amp))
+
+                if(ampMeasureState == 0): # measuring base consumption
+                    ampMeasureCount = ampMeasureCount - 1
+                    if ampMeasureCount == 0:
+                        ampMeasureCount = 1 # following measures done every second
+                        wsm.print_log(str(ampMeasureNum) + ") I measure[V] = " + str(amp) + "\n")
+                        #print(str(ampMeasureNum) + ") I measure[V] = " + str(amp) + "\n")
+                        curr_amp = amp*ADC_TO_AMP
+                        wsm.print_log(str(ampMeasureNum) + ") curr_amp = " + str(curr_amp) + "\n")
+                        #print(str(ampMeasureNum) + ") curr_amp = " + str(curr_amp) + "\n")
+                        diff_amp = curr_amp - base_consumption_amp
+                        wsm.print_log(str(ampMeasureNum) + ") diff_amp = " + str(diff_amp) + "\n")
+                        #print(str(ampMeasureNum) + ") diff_amp = " + str(diff_amp) + "\n")
+                        amp_offset_temp = diff_amp*AMP_TO_ADC
+                        wsm.print_log(str(ampMeasureNum) + ") amp_offset_raw = " + str(amp_offset_temp) + "\n")
+                        #print(str(ampMeasureNum) + ") amp_offset_raw = " + str(amp_offset_temp) + "\n")
+                        if amp_offset_temp < ampMeasureMin:
+                            ampMeasureMin = amp_offset_temp                        
+                        ampMeasureNum = ampMeasureNum + 1
+                        if ampMeasureNum >= 5:
+                            amp_offset_raw = ampMeasureMin
+                            wsm.print_log("Final amp_offset_raw = " + str(amp_offset_raw) + "\n")
+                            #print("Final amp_offset_raw = " + str(amp_offset_raw) + "\n")
+                            ampMeasureState = 1 # normal measuring
+
                 amp -= amp_offset_raw
                 #print("amp raw - offset = " + str(amp))
-                if(amp < 0):
-                    amp = 0
+                if(amp < 0.0):
+                    amp = 0.0
                 amp = amp*ADC_TO_AMP
+                #print("amp [A] = " + str(amp))
+                wsm.set_amp(amp)
                 mAh -= amp/3.6
                 wsm.set_mah(mAh)
 
@@ -1164,6 +1207,7 @@ def start_control_loop():
                     x_des=0
                     y_des=0
                     goalChanged=1
+                    wsm.set_goal_changed(1)
                     updateGoalOnDB=1
                     updateCntrOnDB=1
                     wsm.set_update_goal_on_db(updateGoalOnDB);
@@ -1300,5 +1344,6 @@ def start_control_loop():
             wsm.print_log("while loop error " + str(e))
 
          
+
 
 
