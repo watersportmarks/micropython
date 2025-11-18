@@ -487,6 +487,7 @@ def start_control_loop():
         conf_shunt_low = 0
 
     if boaID == 220100304698880: # p11
+        IMUupsidedown_back = 1
         conf_shunt_low = 0
 
     if boaID == 220100304702492: # p12
@@ -616,6 +617,7 @@ def start_control_loop():
                     bnoErrorCount = 0
                 except Exception as e:
                     print("imu read error: " + str(e))
+                    confidence = -1
                     bnoErrorCount = bnoErrorCount + 1
                     if bnoErrorCount == 3:
                         bnoErrorCount = 0
@@ -628,7 +630,11 @@ def start_control_loop():
                 roll = 0
                 pitch = 0
                 P = 0
-                confidence = 0
+                confidence = -1
+                wsm.print_log("reinit bno...")
+                bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
+                bno.calibration() # calibrate accel + mag
+                bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms                
             #delta = time.ticks_diff(time.ticks_ms(), start) # compute time difference
             #delta_time[log_count] = delta
             if(imuPitchRoll == 0):
@@ -653,7 +659,9 @@ def start_control_loop():
             
             confidence = int(confidence*100) 
             magCal=0
-            if confidence < 3:
+            if confidence < 0:
+                magCal = -1
+            elif confidence < 3:
                 magCal = 3
                 #if confidence != confidence_prev:
                 #    wsm.print_log("Confidence OK:" + str(magCal) + "\n")
