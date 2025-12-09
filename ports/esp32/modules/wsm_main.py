@@ -514,6 +514,14 @@ def start_control_loop():
     if boaID == 220100304698944: # 106
         escType = 1  # waterproof ESC
 
+    if boaID == 154270941121296: # 7A
+        IMUupsidedown_back = 1
+        escType = 1  # waterproof ESC
+
+    if boaID == 154270941121204: # 7B
+        IMUupsidedown_back = 1
+        escType = 1  # waterproof ESC
+
     wsm.set_force_forward(forceForward)
 
     if motorType==2:
@@ -605,6 +613,7 @@ def start_control_loop():
             if wsm.bt_updated():
                 desFW, yawStart, controlType, start_lat, start_lon, goalChanged, xx, yy, delta_lat, delta_lon, freshGPS, x_des, y_des, k_headingDrift = wsm.get_bt_update()
             goalChanged = wsm.get_goal_changed()
+            AlertToSend = wsm.get_alert()
                 #print("desFW = " + str(desFW))
             #******* read imu at 25Hz
             #print("bno.euler = " + str(bno.euler))
@@ -739,6 +748,8 @@ def start_control_loop():
 
             #******** CONTROL yawStart=heading
             if controlType ==1:   # yaw stabilization at desired yaw
+                desFW = wsm.get_desfw()
+                yawStart = wsm.get_yaw_start()
                 alpha=set2Range(yawStart-heading )
                 delta_a=alpha-old_a
                 old_a=alpha
@@ -746,7 +757,7 @@ def start_control_loop():
                 rot=ka*alpha + kaD*delta_a + kaI*integr_a # PID controller
                 rot=limitMotor(rot,400)# temporary limit 400, later 500
                 mR= desFW + rot
-                mL= desFW + -rot
+                mL= desFW - rot
                 if firstPosFix==0: # before first fix do not control angle. used to check motors
                     mR= desFW
                     mL= desFW
@@ -775,6 +786,7 @@ def start_control_loop():
                 wsm.set_vwind(vWind)
                 angWind=-1
                 wsm.set_ang_wind(angWind)
+                #print("CT1: desFW=%d, rot=%d, mR=%d, mL=%d, pitch=%d, heading=%d, relYaw=%d, yawStart=%d" % (desFW, int(rot), int(mR_duty), int(mL_duty), int(pitch), int(heading), int(relativeYaw), int(yawStart)))
 
             if freshGPS==1:
                 SPEEDlimit = wsm.get_speed_limit()

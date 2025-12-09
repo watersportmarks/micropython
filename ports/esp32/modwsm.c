@@ -535,6 +535,24 @@ mp_obj_t wsm_set_delta_lon_sim7600(mp_obj_t value) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(wsm_set_delta_lon_sim7600_obj, wsm_set_delta_lon_sim7600);
 
+/// \method wsm_get_alert()
+mp_obj_t wsm_get_alert(void) {
+    return mp_obj_new_int(get_AlertToSend());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_alert_obj, wsm_get_alert);
+
+/// \method wsm_get_desfw()
+mp_obj_t wsm_get_desfw(void) {
+    return mp_obj_new_float(get_desFW());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_desfw_obj, wsm_get_desfw);
+
+/// \method wsm_get_yaw_start()
+mp_obj_t wsm_get_yaw_start(void) {
+    return mp_obj_new_int(get_yawStart());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_yaw_start_obj, wsm_get_yaw_start);
+
 static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_wsm) },
 
@@ -600,7 +618,10 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_get_goal_changed), MP_ROM_PTR(&wsm_get_goal_changed_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_goal_changed), MP_ROM_PTR(&wsm_set_goal_changed_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_delta_lat_sim7600), MP_ROM_PTR(&wsm_set_delta_lat_sim7600_obj) },
-    { MP_ROM_QSTR(MP_QSTR_set_delta_lon_sim7600), MP_ROM_PTR(&wsm_set_delta_lon_sim7600_obj) },    
+    { MP_ROM_QSTR(MP_QSTR_set_delta_lon_sim7600), MP_ROM_PTR(&wsm_set_delta_lon_sim7600_obj) },  
+    { MP_ROM_QSTR(MP_QSTR_get_alert), MP_ROM_PTR(&wsm_get_alert_obj) },  
+    { MP_ROM_QSTR(MP_QSTR_get_desfw), MP_ROM_PTR(&wsm_get_desfw_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_yaw_start), MP_ROM_PTR(&wsm_get_yaw_start_obj) },
 };
 
 static MP_DEFINE_CONST_DICT(wsm_module_globals, wsm_module_globals_table);
