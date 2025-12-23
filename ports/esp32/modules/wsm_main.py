@@ -39,6 +39,7 @@ date_day = 0
 date_month = 0
 date_year = 0
 btn_free_pushed = False
+gps_init_ok = False
 print("starting main.py")
 
 # LED init
@@ -81,7 +82,8 @@ ADC_TO_AMP = (0.256/32768.0)*1000.0
 AMP_TO_ADC = (32768.0/0.256)/1000.0
 adc = None
 try:
-    adc = ads1x15.ADS1015(i2c, address=0x48, gain=1) # Range is +/- 4.096V.
+    #adc = ads1x15.ADS1015(i2c, address=0x48, gain=1) # Range is +/- 4.096V.
+    adc = ads1x15.ADS1115(i2c, address=0x48, gain=1) # Range is +/- 4.096V.
 except:
     adc = None
 temp=20.0
@@ -141,6 +143,7 @@ try:
     #i2c.writeto(GPS_I2C_ADDRESS, b'\xB5\x62\x06\x08\x06\x00\xC8\x00\x01\x00\x01\x00\xDE\x6A\xB5\x62\x06\x08\x00\x00\x0E\x30', False) # 5Hz + read setting
     i2c.writeto(GPS_I2C_ADDRESS, b'\xB5\x62\x06\x08\x06\x00\xC8\x00\x01\x00\x01\x00\xDE\x6A', False) # 5Hz
     #i2c.writeto(GPS_I2C_ADDRESS, b'\xB5\x62\x06\x08\x06\x00\xF4\x01\x01\x00\x01\x00\x0B\x77', False) # 2Hz
+    gps_init_ok = True
 except:
     print("Cannot init GPS")
     pass
@@ -150,7 +153,12 @@ mag_degrees = 0
 mag_offsets_max = [-1000, -1000, -1000]
 mag_offsets_min = [1000, 1000, 1000]
 mag_offsets = [0, 0, 0]
-bmm = bmm150.BMM150(i2c, address=0x10)
+bmm = None
+try:
+    bmm = bmm150.BMM150(i2c, address=0x10)
+except:
+    print("Cannot init BMM150")
+    bmm = None
 
 def set2Range(angle):
     if angle > 180:
@@ -213,6 +221,8 @@ def read_gps():
     global lat, lon, timeGPS, FixQuality, GPSdeltaDist
     global GPSheading, GPSprecision, freshGPS, GPS_HZ
     global date_day, date_month, date_year
+    if gps_init_ok == False:
+        return
     try:
         buflen = int.from_bytes(i2c_read_reg(GPS_I2C_ADDRESS, bufmsb, 2), "big")
         #print("buflen = " + str(buflen))        
@@ -319,6 +329,8 @@ def read_gps():
 
 def read_compass():
     global mag_degrees, btn_free_pushed
+    if bmm == None:
+        return
     try:
         magx, magy, magz, _ = bmm.measurements
         #print(f"x: {magx}uT, y: {magy}uT, z:{magz}uT")
@@ -452,7 +464,7 @@ def start_control_loop():
     y_des = 0
     boaID = 0
     motorType = 2
-    IMUupsidedown_back = 0 # electronic board normal position VS upsidedown and facing backward
+    IMUupsidedown_back = 1 # electronic board normal position VS upsidedown and facing backward
     forceForward = 0
     imuPitchRoll = 1
     roll = 0
@@ -472,46 +484,81 @@ def start_control_loop():
     ampMeasureState = 0
     ampMeasureMin = 32000.0
     ampMeasureNum = 0
-    escType = 0 # 0=normal, 1=waterproof ESC
+    escType = 1 # 0=normal, 1=waterproof ESC
 
     boaID = wsm.get_mark_id()
     print("boa id = " + str(boaID))
     wsm.print_log("boa id = " + str(boaID) + "\r\n")
 
     # Change PID control parameters, ...
+    # hardware id / electronic board id
+    if boaID == 220100304699472: # 4D
+        IMUupsidedown_back = 0
+        escType = 0
 
-    if boaID == 220100304698896: # 120
+    if boaID == 154270941121264: # 102/6F
+        IMUupsidedown_back = 0
+        escType = 0
+
+    if boaID == 154270941103344: # 6C
+        IMUupsidedown_back = 0
+        escType = 0
+
+    #if boaID == 220100304698868: # 6A
+
+    #if boaID == 154270941121312: # 6E
+
+    if boaID == 154270941103344: # 112/119
+        IMUupsidedown_back = 0
+        escType = 0
+
+    if boaID == 202481601870635: # 114/113
+        IMUupsidedown_back = 0
+        escType = 0        
+
+    if boaID == 224830196571032: # 134/121
+        IMUupsidedown_back = 0
+        escType = 0  
+
+    if boaID == 220100304698896: # 120/5C
         conf_shunt_low = 0
+        IMUupsidedown_back = 0
+        escType = 0
 
-    if boaID == 220100304698936: # 128
+    if boaID == 220100304698936: # 128/5A
         conf_shunt_low = 0
+        IMUupsidedown_back = 0
+        escType = 0        
 
-    if boaID == 220100304698880: # p11
+    if boaID == 220100304698880: # p11/5E
         IMUupsidedown_back = 1
+        escType = 0
         conf_shunt_low = 0
 
-    if boaID == 220100304702492: # p12
+    if boaID == 220100304702492: # p12/5B
         IMUupsidedown_back = 1
+        escType = 0
         conf_shunt_low = 0
 
-    if boaID == 220100304698904: # 5D
+    if boaID == 220100304698904: # 122/5D
         IMUupsidedown_back = 1
         conf_shunt_low = 0
         escType = 1  # waterproof ESC
 
-    if boaID == 220100304703464: # 6B/125
+    if boaID == 220100304703464: # 125/6B
         IMUupsidedown_back = 1
         escType = 1  # waterproof ESC
 
-    if boaID == 154270941121492: # 135
+    if boaID == 154270941121492: # 135/6B_2
         IMUupsidedown_back = 1
         escType = 1  # waterproof ESC
 
-    if boaID == 154270941103312: # 130
+    if boaID == 154270941103312: # 130/6D
         IMUupsidedown_back = 1
         escType = 1  # waterproof ESC
 
-    if boaID == 220100304698944: # 106
+    if boaID == 220100304698944: # 106/5F
+        IMUupsidedown_back = 0
         escType = 1  # waterproof ESC
 
     if boaID == 154270941121296: # 7A
@@ -1124,7 +1171,7 @@ def start_control_loop():
                     volt = 0    
                 volt = volt*ADC_TO_VOLT # conversione corretta? 
                 wsm.set_volt(volt)
-                #print(volt)
+                #print("volt = " + str(volt))
                 volt2=volt+0.07*amp # 0.04*amp
                 if volt2<14.5 and volt!=0:
                     global_status_warnings |= (0x01)
