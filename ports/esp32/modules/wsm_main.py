@@ -43,7 +43,7 @@ gps_init_ok = False
 print("starting main.py")
 
 # LED init
-strobo = PWM(Pin(4), freq=100, duty_u16=0) # 100 hz, 10ms; off
+strobo = PWM(Pin(4), freq=800, duty_u16=0) # 100 hz, 10ms; off
 #strobo = Pin(4, Pin.OUT, value=0)
 #strobo.on()
 ## time.sleep(1)
@@ -229,7 +229,7 @@ def read_gps():
         if buflen > 0:
             nmeas = i2c_read_reg(GPS_I2C_ADDRESS, data, buflen).decode().splitlines()
             if buflen>80:
-                wsm.print_log("warning, gps buffer becoming full.." + str(buflen) + "\n")
+                wsm.print_log("W,gps~full.." + str(buflen) + "\n")
 
             for nmea in nmeas:
                 #print("nmea = " + str(nmea))
@@ -306,7 +306,7 @@ def read_gps():
                     if time_refreshGPS<0.01:
                         time_refreshGPS = 0.01 #  to avoid crazy effects   
                     if time_refreshGPS > 0.8: # 5Hz was not accepted. try again
-                        wsm.print_log("refresh GPS slow:" + str(time_refreshGPS) + "\n")
+                        wsm.print_log("GPS slow:" + str(time_refreshGPS) + "\n")
                     GPS_HZ=1/time_refreshGPS
                     #print("GPS_HZ = " + str(GPS_HZ))
                     startTgps = time.ticks_ms()
@@ -569,6 +569,9 @@ def start_control_loop():
         IMUupsidedown_back = 1
         escType = 1  # waterproof ESC
 
+    if boaID == 220100304700752: # el. 111
+        conf_shunt_low = 0
+
     wsm.set_force_forward(forceForward)
 
     if motorType==2:
@@ -628,6 +631,8 @@ def start_control_loop():
 
     wsm.print_log("xGPS; yGPS; heading;(CalMag);  mR, mL, GPSprecision, lat, lon, ,GPStime hhmmss, heading drift, mAh, Volt, Amp, Mag\n")
 
+    worst_time = 0
+
     while 1:
         try:
             wdt.feed()
@@ -639,14 +644,16 @@ def start_control_loop():
             #    min_time = delta
             #print("time="+str(delta))
             delta_time[log_count] = delta
+            if delta > worst_time:
+                worst_time = delta
             if delta < 40:
                 time.sleep_ms(40-delta)  # period 40ms: 25Hz
             start = time.ticks_ms()
             
             
-            if fastFlash>0:
-                ## LED fast flash, turn off as soon as possible
-                strobo.duty_u16(0) # PWM off
+            #if fastFlash>0:
+            #    ## LED fast flash, turn off as soon as possible
+            #    strobo.duty_u16(0) # PWM off
             
             if btnPushed:
                 btnCounter = btnCounter + 1
@@ -1199,8 +1206,9 @@ def start_control_loop():
                     updateCntrOnDB=1
                     wsm.set_control_type(controlType)            
                     wsm.print_log("shutdown\n")
-                    # time.sleep(2)
-                    # check_call(['sudo', 'poweroff'])
+                    bno.soft_reset()
+                    wsm.turn_off()
+                    #time.sleep(5) # wait to power off (must be < 10 seconds otherwise WDT will raise)
 
                 if adc != None:
                     try:
@@ -1239,6 +1247,7 @@ def start_control_loop():
                             #print("Final amp_offset_raw = " + str(amp_offset_raw) + "\n")
                             ampMeasureState = 1 # normal measuring
 
+                #amp_offset_raw = -200;
                 amp -= amp_offset_raw
                 #print("amp raw - offset = " + str(amp))
                 if(amp < 0.0):
@@ -1375,6 +1384,10 @@ def start_control_loop():
                 #log_file.write(longMessage+warnings)
                 #log_file.write("\r\n")
                 #log_file.flush()
+                #if worst_time > 40:                
+                #avg_time = sum(delta_time) // len(delta_time)
+                #warnings+="; " + str(worst_time) + "/" + str(avg_time)
+                worst_time = 0
                 wsm.print_log(longMessage+warnings +"\r\n")
                 #delta = time.ticks_diff(time.ticks_ms(), start) # compute time difference
                 #print("log write time = " + str(delta))

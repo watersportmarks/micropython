@@ -283,25 +283,6 @@ mp_obj_t wsm_set_wifi_credentials(mp_obj_t ssid, mp_obj_t pw, mp_obj_t index) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_3(wsm_set_wifi_credentials_obj, wsm_set_wifi_credentials);
 
-/// \method wsm_get_log()
-static mp_obj_t wsm_get_log(void) {
-    byte *buf;
-
-    int32_t fsize = get_log_size();
-    printf("read fsize = %ld\n", fsize);
-
-    buf = m_new(byte, fsize);
-    //printf("buffer allocated\n");
-    get_log(buf, fsize);
-
-    //return mp_obj_new_bytes(buf, fsize);  // Using this function a new buffer is allocated with same size as "buf", with large files
-                                            // it leads to memory exhaustion.
-    return mp_obj_new_bytearray_by_ref(fsize, buf); // This function could be used instead...  
-
-    //return MP_OBJ_FROM_PTR(o);   // Second version...
-}
-static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_log_obj, wsm_get_log);
-
 /// \method wsm_get_control_type()
 mp_obj_t wsm_get_control_type(void) {
     return mp_obj_new_int(get_controlType());
@@ -553,6 +534,13 @@ mp_obj_t wsm_get_yaw_start(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(wsm_get_yaw_start_obj, wsm_get_yaw_start);
 
+/// \method wsm_power_down()
+mp_obj_t wsm_turn_off(void) {
+    power_down();
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(wsm_turn_off_obj, wsm_turn_off);
+
 static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_wsm) },
 
@@ -581,7 +569,6 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_set_update_goal_on_db), MP_ROM_PTR(&wsm_set_update_goal_on_db_obj) },
     { MP_ROM_QSTR(MP_QSTR_print_log), MP_ROM_PTR(&wsm_print_log_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_wifi_credentials), MP_ROM_PTR(&wsm_set_wifi_credentials_obj) },
-    { MP_ROM_QSTR(MP_QSTR_get_log), MP_ROM_PTR(&wsm_get_log_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_control_type), MP_ROM_PTR(&wsm_get_control_type_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_start_lat), MP_ROM_PTR(&wsm_set_start_lat_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_start_lon), MP_ROM_PTR(&wsm_set_start_lon_obj) },
@@ -622,6 +609,7 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_get_alert), MP_ROM_PTR(&wsm_get_alert_obj) },  
     { MP_ROM_QSTR(MP_QSTR_get_desfw), MP_ROM_PTR(&wsm_get_desfw_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_yaw_start), MP_ROM_PTR(&wsm_get_yaw_start_obj) },
+    { MP_ROM_QSTR(MP_QSTR_turn_off), MP_ROM_PTR(&wsm_turn_off_obj) },
 };
 
 static MP_DEFINE_CONST_DICT(wsm_module_globals, wsm_module_globals_table);
