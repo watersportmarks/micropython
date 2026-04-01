@@ -1,6 +1,5 @@
 from machine import Pin, I2C, PWM, DAC
 import time
-from bno08x_i2c import *
 import ads1x15
 import math
 from ubinascii import unhexlify
@@ -9,6 +8,7 @@ import os
 from machine import WDT
 import esp32
 import bmm150
+import sys
 
 # Constants
 GPS_I2C_ADDRESS = 0x42
@@ -111,16 +111,63 @@ wsm.set_volt(volt)
 print("volt",volt)
 
 # IMU init
+USE_BNO085 = 0
+USE_BNO086 = 1
+imu_dev_used = USE_BNO086
+if imu_dev_used == USE_BNO085:
+    from bno08x_i2c import *
+else:
+    from bno08x import *
+bno086_num_int_to_wait = 1
 bno = None
-try:
-    bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
-    #bno = BNO08X_I2C(i2c, debug=False)
-    bno.calibration() # calibrate accel + mag
-    bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms
-    #print("IMU configured")
-except:
-    wsm.print_log("Cannot init IMU\n")
-    bno = None
+def init_bno086():
+    global bno
+    trials = 0
+    while trials < 3:
+        try:
+            bno = BNO08X(i2c, address=0x4A, debug=False)
+            break
+        except:
+            bno = None
+            trials = trials + 1
+            time.sleep(0.2)
+    if trials == 3:
+        wsm.print_log("Cannot init IMU\n")
+        return
+    trials = 0
+    while trials < 3:
+        try:
+            bno.calibration() # calibrate accel + mag
+            bno.enable_feature(BNO_REPORT_ROTATION_VECTOR, 20) # default every 50 ms
+            break
+        except:
+            trials = trials + 1
+            time.sleep(0.2)
+    if trials == 3:
+        wsm.print_log("Cannot conf IMU\n")
+        bno = None
+        return
+bno086_int_pin = Pin(17, Pin.IN, Pin.PULL_UP)
+bno086_data_ready = 0
+def bno086_irq_handler(pin):    
+    global bno086_data_ready
+    #print("bno086 int = " + str(bno086_int_pin.value()))
+    bno086_data_ready = bno086_data_ready + 1
+bno086_int_pin.irq(trigger=Pin.IRQ_FALLING, handler=bno086_irq_handler)
+if imu_dev_used == USE_BNO085:
+    bno086_num_int_to_wait = 1
+    try:
+        bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
+        #bno = BNO08X_I2C(i2c, debug=False)
+        bno.calibration() # calibrate accel + mag
+        bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms
+        #print("IMU configured")
+    except:
+        wsm.print_log("Cannot init IMU\n")
+        bno = None
+else:
+    init_bno086()
+    bno086_num_int_to_wait = 3
 
 # GPS init
 startTgps = time.ticks_ms()
@@ -372,7 +419,7 @@ def read_compass():
         print("error reading magnetometer " + str(e))
 
 def start_control_loop():
-    global freshGPS, GPSdeltaDist, GPS_HZ, GPSheading, GPSprecision, time_refreshGPS, warnings, amp, volt, adc, mAh, headingFilt, global_status_warnings, VOLTAGE_DIVIDER, MIN_WIDTH, MAX_WIDTH, timeGPS, date_day, date_month, bno, mag_degrees, lat, lon
+    global freshGPS, GPSdeltaDist, GPS_HZ, GPSheading, GPSprecision, time_refreshGPS, warnings, amp, volt, adc, mAh, headingFilt, global_status_warnings, VOLTAGE_DIVIDER, MIN_WIDTH, MAX_WIDTH, timeGPS, date_day, date_month, bno, mag_degrees, lat, lon, bno086_data_ready
 
     MOTlimit = 500
     SOFT_ACC_STEP = 2 # When goal changed, for 10 seconds is active
@@ -469,6 +516,7 @@ def start_control_loop():
     imuPitchRoll = 1
     roll = 0
     pitch = 0
+    yaw = 0
     confidence = 0
     confidence_prev = 0
     fastFlash = 1
@@ -672,12 +720,21 @@ def start_control_loop():
             #******* read imu at 25Hz
             #print("bno.euler = " + str(bno.euler))
             #start = time.ticks_ms()
+            #print("bno086_data_ready = " + str(bno086_data_ready))
             if bno != None:
                 try: # sometimes I get error here...
-                    pitch, roll, P, confidence = bno.euler  # pitch and roll inverted to be aligned as in the mark
-                    #print("roll = " + str(int(roll)))
-                    #print("pitch = " + str(int(pitch)))
-                    bnoErrorCount = 0
+                    if imu_dev_used == USE_BNO085:
+                        pitch, roll, yaw, confidence = bno.euler  # pitch and roll inverted to be aligned as in the mark
+                        #print("roll = " + str(int(roll)))
+                        #print("pitch = " + str(int(pitch)))
+                        bnoErrorCount = 0
+                    else:
+                        if bno086_data_ready >= bno086_num_int_to_wait:
+                            bno086_data_ready = 0
+                            pitch, roll, yaw, confidence = bno.euler  # pitch and roll inverted to be aligned as in the mark
+                            #print("roll = " + str(int(roll)))
+                            #print("pitch = " + str(int(pitch)))
+                            bnoErrorCount = 0
                 except Exception as e:
                     print("imu read error: " + str(e))
                     confidence = -1
@@ -686,18 +743,25 @@ def start_control_loop():
                         bnoErrorCount = 0
                         #print("reinit bno...")
                         wsm.print_log("reinit bno...")
-                        bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
-                        bno.calibration() # calibrate accel + mag
-                        bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms
+                        if imu_dev_used == USE_BNO085:
+                            bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
+                            bno.calibration() # calibrate accel + mag
+                            bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms
+                        else:
+                            init_bno086()
             else:
                 roll = 0
                 pitch = 0
-                P = 0
+                yaw = 0
                 confidence = -1
+                print("reinit bno...")
                 wsm.print_log("reinit bno...")
-                bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
-                bno.calibration() # calibrate accel + mag
-                bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms                
+                if imu_dev_used == USE_BNO085:
+                    bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
+                    bno.calibration() # calibrate accel + mag
+                    bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms
+                else:
+                    init_bno086()              
             #delta = time.ticks_diff(time.ticks_ms(), start) # compute time difference
             #delta_time[log_count] = delta
             if(imuPitchRoll == 0):
@@ -709,7 +773,7 @@ def start_control_loop():
                 pitch = int(pitch)
                 if IMUupsidedown_back == 1:
                     pitch = set2Range(pitch - 180.0)
-            heading=int(P)
+            heading=int(yaw)
             read_compass()
             if useMagBmm150:
                 heading=int(mag_degrees)
@@ -720,7 +784,7 @@ def start_control_loop():
                 headingFilt = int(headingFilt*0.9 + heading*0.1)
             wsm.set_heading_filt(headingFilt)
             
-            confidence = int(confidence*100) 
+            confidence = int(confidence*100) # accuracy estimate (condfidence variable) given in radians
             magCal=0
             if confidence < 0:
                 magCal = -1
@@ -1206,6 +1270,7 @@ def start_control_loop():
                     updateCntrOnDB=1
                     wsm.set_control_type(controlType)            
                     wsm.print_log("shutdown\n")
+                    print("shutdown")
                     bno.soft_reset()
                     wsm.turn_off()
                     #time.sleep(5) # wait to power off (must be < 10 seconds otherwise WDT will raise)
@@ -1411,8 +1476,11 @@ def start_control_loop():
                                 if imu_save_cal_count == IMU_SAVE_CALIBRATION_DELAY:
                                     imu_save_cal_count = 0
                                     imu_best_confidence = confidence
-                                    bno.save_calibration_data()
-                                    print("save calibration")
+                                    if imu_dev_used == USE_BNO085:
+                                        bno.save_calibration_data()
+                                    else:
+                                        bno.calibration_save()
+                                    print("calibration saved")
                             else:
                                 imu_save_cal_count = 0    
                     except:
@@ -1421,6 +1489,7 @@ def start_control_loop():
         # end tasks at 1 Hz
         except Exception as e: # while loop general exception
             print("while loop error " + str(e))
+            #sys.print_exception(e)
             wsm.print_log("while loop error " + str(e))
 
          
