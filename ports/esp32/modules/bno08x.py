@@ -556,7 +556,7 @@ class BNO08X:
         self._quaternion_euler_vector = BNO_REPORT_ROTATION_VECTOR  # by default can be change with set_quaternion_euler
         # for saving the most recent reading when decoding several packets
         self._readings = {}
-        self.initialize()
+        #self.initialize()
 
     def initialize(self):
         # Initialize the sensor
@@ -564,9 +564,13 @@ class BNO08X:
             if (self._rst_pin is not None):
                 self.hard_reset()
             else:
+                print("soft resetting")
                 self.soft_reset()
+                print("soft reset done")
             try:
+                print("checking id")
                 if self._check_id():
+                    print("id ok")
                     break
             except:
                 sleep_ms(500)
@@ -599,12 +603,35 @@ class BNO08X:
         _seq = self._send_packet(BNO_CHANNEL_EXE, data)
         sleep_ms(500)
 
-        for _i in range(3):
-            try:
-                _packet = self._read_packet()
-            except PacketError:
-                sleep_ms(500)
-        self._dbg("SOFT RESETTING... OK!")
+        # for _i in range(3):
+        #     try:
+        #         _packet = self._read_packet()
+        #     except PacketError:
+        #         sleep_ms(500)
+        # self._dbg("SOFT RESETTING... OK!")
+
+    def soft_reset_complete(self):
+        if self._data_ready:
+            new_packet = self._read_packet()
+            if new_packet.channel_number == BNO_CHANNEL_EXE and new_packet.report_id == 0x01:
+                return True
+            else:
+                return False
+        else:
+            return False      
+
+    def soft_reset_complete(self):
+        if self._data_ready:
+            new_packet = self._read_packet()
+            if new_packet.channel_number == BNO_CHANNEL_EXE and new_packet.report_id == 0x01:
+                return True
+            else:
+                return False
+        else:
+            return False   
+
+    def process_queue(self):
+        self._process_available_packets()
 
     # Hardware reset the sensor to an initial unconfigured state
     def hard_reset(self):
@@ -621,6 +648,10 @@ class BNO08X:
         sleep_ms(10)
         self._reset.value(1)
         sleep_ms(120)  # Since Issue 4
+
+    def feature_enabled(self, feature_id):
+        # Returns True if the given feature is enabled
+        return feature_id in self._readings
 
     # Enable a given feature of the BNO08x (See Hillcrest 6.5.4)
     # TODO: add docs for available features
@@ -647,13 +678,13 @@ class BNO08X:
 
         self._send_packet(BNO_CHANNEL_CONTROL, set_feature_report)
 
-        start_time = ticks_ms()
-        while ticks_diff(ticks_ms(), start_time) < FEATURE_ENABLE_TIMEOUT:
-            self._process_available_packets(max_packets=10)
-            self._dbg("Feature IDs", self._readings)
-            if feature_id in self._readings:
-                return
-        raise RuntimeError("BNO08X_I2C : ENABLING FEATURE ID : Was not able to enable feature", feature_id)
+        # start_time = ticks_ms()
+        # while ticks_diff(ticks_ms(), start_time) < FEATURE_ENABLE_TIMEOUT:
+        #     self._process_available_packets(max_packets=10)
+        #     self._dbg("Feature IDs", self._readings)
+        #     if feature_id in self._readings:
+        #         return
+        # raise RuntimeError("BNO08X_I2C : ENABLING FEATURE ID : Was not able to enable feature", feature_id)
 
     def set_orientation(self, quaternion):
         return  # Procedure to be completed and corrected
@@ -1427,7 +1458,7 @@ class BNO08X:
 
         # Then we read the packet data to the buffer image
         self._i2c.readfrom_into(self._bno_add, self._buffer_mv[0:packet_byte_count])
-
+        #print("packet data = " + str(self._buffer[0:packet_byte_count]))
         # Then process the packet
         #print("packet = " + str(self._buffer[0:packet_byte_count]))
         new_packet = Packet(self._buffer[0:packet_byte_count])
