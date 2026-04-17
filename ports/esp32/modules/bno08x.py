@@ -17,9 +17,14 @@
 from math import asin, atan2, degrees
 
 from collections import namedtuple
+import time
+#from components.mp_component.micropython.examples import micropython
 from micropython import const
 from ustruct import unpack_from, pack_into
 from utime import ticks_ms, sleep_ms, ticks_diff
+import gc
+import sys
+import wsm
 
 LIBNAME = "BNO08X"
 LIBVERSION = "1.0.8"
@@ -267,14 +272,14 @@ INITIAL_REPORTS = {
         "In-Vehicle": -1,
     },
     BNO_REPORT_STABILITY_CLASSIFIER: "Unknown",
-    BNO_REPORT_ROTATION_VECTOR: (0.0, 0.0, 0.0, 0.0, 0.0),
-    BNO_REPORT_GAME_ROTATION_VECTOR: (0.0, 0.0, 0.0, 0.0),
-    BNO_REPORT_GEOMAGNETIC_ROTATION_VECTOR: (0.0, 0.0, 0.0, 0.0),
+    BNO_REPORT_ROTATION_VECTOR: [0.0, 0.0, 0.0, 0.0, 0.0],
+    BNO_REPORT_GAME_ROTATION_VECTOR: [0.0, 0.0, 0.0, 0.0],
+    BNO_REPORT_GEOMAGNETIC_ROTATION_VECTOR: [0.0, 0.0, 0.0, 0.0],
     # Gyro is a 5 tuple, celsius float and int timestamp for last two entry
-    BNO_REPORT_RAW_GYROSCOPE: (0, 0, 0, 0.0, 0),
+    BNO_REPORT_RAW_GYROSCOPE: [0, 0, 0, 0.0, 0],
     # Acc & Mag are 4-tuple, int timestamp for last entry
-    BNO_REPORT_RAW_ACCELEROMETER: (0, 0, 0, 0),
-    BNO_REPORT_RAW_MAGNETOMETER: (0, 0, 0, 0),
+    BNO_REPORT_RAW_ACCELEROMETER: [0, 0, 0, 0],
+    BNO_REPORT_RAW_MAGNETOMETER: [0, 0, 0, 0],
     BNO_REPORT_STEP_COUNTER: 0,
 }
 
@@ -528,14 +533,15 @@ class BNO08X:
             self.int_handler = int_handler
             self.int_locked = False
             self._int_data_ready = False
-            int_pin.irq(trigger=int_pin.IRQ_FALLING | int_pin.IRQ_RISING,
-                        handler=self.int_handle)
+            int_pin.irq(trigger=int_pin.IRQ_FALLING, handler=self.int_handle)
 
         self._dbg("INITIALISATION...")
         self._buffer = bytearray(DATA_BUFFER_SIZE)
         self._buffer_mv = memoryview(self._buffer)
+        self._header_mv = self._buffer_mv[0:4]
         self._cde_buffer = bytearray(12)
         self._packet_slices = []
+        self.euler_angles = [0.0, 0.0, 0.0, 0.0]
 
         # TODO: this is wrong there should be one per channel per direction
         self._seq_nb = [0, 0, 0, 0, 0, 0]
@@ -554,6 +560,7 @@ class BNO08X:
         self._init_complete = False
         self._id_read = False  # Initialisation we do not know id
         self._quaternion_euler_vector = BNO_REPORT_ROTATION_VECTOR  # by default can be change with set_quaternion_euler
+        self._rot_vector_ready = False
         # for saving the most recent reading when decoding several packets
         self._readings = {}
         #self.initialize()
@@ -578,20 +585,11 @@ class BNO08X:
             raise RuntimeError("Could not initialize")
 
     def int_handle(self, pin):
-        # if not pin.value() and not self.int_locked:
-        #     self.int_locked = True  # Lock Interrupt
-        #     self._int_data_ready = True
-        #     buff = "New BNO Message"
-        #     print("New BNO msg")
-        #     # if buff is not None:
-        #     #    self.int_handler(buff)
-        # elif pin.value() and self.int_locked:
-        #     self.int_locked = False  # Unlock interrupt
-        if not pin.value():
+        #print("INTERRUPT RECEIVED")
+        if not self.int_locked:
+            #print("DATA READY")
             self._int_data_ready = True
-            #buff = "New BNO Message"
-            #print("New BNO msg")
-            self._dbg("New BNO msg")
+
 
     # Reset the sensor to an initial unconfigured state
     def soft_reset(self):
@@ -611,24 +609,15 @@ class BNO08X:
         # self._dbg("SOFT RESETTING... OK!")
 
     def soft_reset_complete(self):
-        if self._data_ready:
-            new_packet = self._read_packet()
-            if new_packet.channel_number == BNO_CHANNEL_EXE and new_packet.report_id == 0x01:
+        if self._int_data_ready:
+            self._int_data_ready = False
+            packet_byte_count, channel_number, report_id = self._read_packet()
+            if channel_number == BNO_CHANNEL_EXE and report_id == 0x01:
                 return True
             else:
                 return False
         else:
-            return False      
-
-    def soft_reset_complete(self):
-        if self._data_ready:
-            new_packet = self._read_packet()
-            if new_packet.channel_number == BNO_CHANNEL_EXE and new_packet.report_id == 0x01:
-                return True
-            else:
-                return False
-        else:
-            return False   
+            return False
 
     def process_queue(self):
         self._process_available_packets()
@@ -724,6 +713,11 @@ class BNO08X:
         self._quaternion_euler_vector = feature_id
         return
 
+    def euler_ready(self):
+        temp = self._rot_vector_ready
+        self._rot_vector_ready = False
+        return temp
+
     # ================Below are class properties=======================
 
     @property
@@ -811,31 +805,50 @@ class BNO08X:
         except KeyError:
             raise RuntimeError("No quaternion report found, is it enabled?") from None
 
+    @micropython.native
+    def _update_euler_internal(self):
+        q = self._readings[BNO_REPORT_ROTATION_VECTOR]
+        # # Use local variables for speed
+        # x, y, z, w = q[0], q[1], q[2], q[3]
+        
+        # # Pre-calculate squares to save float object creation
+        # ysqr = y * y
+        
+        # # Roll (x-axis rotation)
+        # t0 = 2.0 * (w * x + y * z)
+        # t1 = 1.0 - 2.0 * (x * x + ysqr)
+        # self.euler_angles[0] = degrees(atan2(t0, t1))
+        
+        # # Pitch (y-axis rotation)
+        # t2 = 2.0 * (w * y - z * x)
+        # t2 = 1.0 if t2 > 1.0 else t2
+        # t2 = -1.0 if t2 < -1.0 else t2
+        # self.euler_angles[1] = degrees(asin(t2))
+        
+        # # Yaw (z-axis rotation)
+        # t3 = 2.0 * (w * z + x * y)
+        # t4 = 1.0 - 2.0 * (ysqr + z * z)
+        # self.euler_angles[2] = degrees(atan2(t3, t4))
+        
+        self.euler_angles[0], self.euler_angles[1], self.euler_angles[2] = wsm.compute_euler(q[0], q[1], q[2], q[3])
+
+        # Accuracy/Confidence
+        self.euler_angles[3] = q[4]
+    
     @property
     def euler(self):
         # A 3-tuple representing the current Pan Tilt and Roll euler angle in degree
-        self._process_available_packets()
+        self._process_available_packets()    
         try:
-            # q = self._readings[BNO_REPORT_ROTATION_VECTOR]
-            q = self._readings[self._quaternion_euler_vector]
+            #before_mem = gc.mem_free()
+            #start_time = time.ticks_ms()    
+            self._update_euler_internal()
+            #print("_update_euler_internal = " + str(time.ticks_diff(time.ticks_ms(), start_time)))
+            #print("_euler_internal = " + str(before_mem - gc.mem_free()))            
         except KeyError:
-            raise RuntimeError("No quaternion report found, is it enabled?") from None
-
-        jsqr = q[1] * q[1]
-        t0 = +2.0 * (q[3] * q[0] + q[1] * q[2])
-        t1 = +1.0 - 2.0 * (q[0] * q[0] + jsqr)
-        roll = degrees(atan2(t0, t1))
-
-        t2 = +2.0 * (q[3] * q[1] - q[2] * q[0])
-        t2 = +1.0 if t2 > +1.0 else t2
-        t2 = -1.0 if t2 < -1.0 else t2
-        tilt = degrees(asin(t2))
-
-        t3 = +2.0 * (q[3] * q[2] + q[0] * q[1])
-        t4 = +1.0 - 2.0 * (jsqr + q[2] * q[2])
-        pan = degrees(atan2(t3, t4))
-
-        return roll, tilt, pan, q[4]
+            print("No quaternion report found, is it enabled?") 
+            raise RuntimeError("No quaternion report found, is it enabled?") from None 
+        return self.euler_angles
 
     @property
     def geomagnetic_quat(self):
@@ -1030,29 +1043,37 @@ class BNO08X:
             subcommand,
         )
         self._send_packet(BNO_CHANNEL_CONTROL, local_buffer)
-        self._sr_seq_nb[COMMAND_REQUEST] = (self._sr_seq_nb.get(COMMAND_REQUEST, 0) + 1) % 256  # increment sr_seq_nb
+        self._sr_seq_nb[COMMAND_REQUEST] = (self._sr_seq_nb.get(COMMAND_REQUEST, 0) + 1) % 256  # increment sr_seq_nb     
 
     def _process_available_packets(self, max_packets=None):
         processed_count = 0
-        self._dbg("PROCESSING AVAILABLE PACKETS...", processed_count, "/", max_packets)
+        if self._debug: self._dbg("PROCESSING AVAILABLE PACKETS...", processed_count, "/", max_packets)
         #print("PROCESSING AVAILABLE PACKETS...", processed_count, "/", max_packets)
-        #while self._data_ready:
-        if self._data_ready:
-            if max_packets and processed_count > max_packets:
-                return
-            #print("reading a packet")
+        #print("reading a packet")
+        if self._int_data_ready: # interrupt received
+            self._int_data_ready = False
             try:
-                new_packet = self._read_packet()
+                #before_mem = gc.mem_free()
+                #new_packet = self._read_packet() # read remaining data from I2C
+                #start_time = time.ticks_ms()
+                packet_byte_count, channel_number, report_id = self._read_packet()
+                #print("_read_packet = " + str(time.ticks_diff(time.ticks_ms(), start_time)))
+                #print("_read_packet = " + str(before_mem - gc.mem_free()))
             except PacketError:
                 print("packet error " + str(PacketError))
                 #continue
                 return
-            self._handle_packet(new_packet)
+            #before_mem = gc.mem_free()
+            #self._handle_packet(new_packet)
+            #start_time = time.ticks_ms()
+            self._handle_packet(packet_byte_count, channel_number)
+            #print("_handle_packet = " + str(time.ticks_diff(time.ticks_ms(), start_time)))
+            #print("_handle_packet = " + str(before_mem - gc.mem_free()))
             processed_count += 1
-            self._dbg("\t Packets processed = ", processed_count)
+            if self._debug: self._dbg("\t Packets processed = ", processed_count)
             #print("\t Packets processed = ", processed_count)
 
-        self._dbg("PROCESSING AVAILABLE PACKETS : DONE!")        
+        if self._debug: self._dbg("PROCESSING AVAILABLE PACKETS : DONE!")
 
     def _wait_for_packet_type(self, channel_number, report_id=None, timeout=10000, debug=True):
         if report_id:
@@ -1063,30 +1084,31 @@ class BNO08X:
 
         start_time = ticks_ms()
         while ticks_diff(ticks_ms(), start_time) < timeout:
-            new_packet = self._wait_for_packet()
+            packet_byte_count, packet_channel_number, packet_report_id = self._wait_for_packet()
             self._dbg("NEW PACKET : ")
-            if self._debug:
-                print(new_packet)
-            if new_packet.channel_number == channel_number:
+            #if self._debug:
+            #    print(new_packet)
+            if packet_channel_number == channel_number:
                 if report_id:
-                    if new_packet.report_id == report_id:
-                        return new_packet
+                    if packet_report_id == report_id:
+                        return packet_byte_count, packet_channel_number, packet_report_id
                 else:
-                    return new_packet
-            if new_packet.channel_number not in (BNO_CHANNEL_EXE, BNO_CHANNEL_SHTP_COMMAND):
+                    return packet_byte_count, packet_channel_number, packet_report_id
+            if packet_channel_number not in (BNO_CHANNEL_EXE, BNO_CHANNEL_SHTP_COMMAND):
                 self._dbg("passing packet to handler for de-slicing")
-                self._handle_packet(new_packet)
+                self._handle_packet(packet_byte_count, packet_channel_number)
         raise RuntimeError("Timed out waiting for a packet on channel", channel_number)
 
     def _wait_for_packet(self, timeout=PACKET_READ_TIMEOUT):
         self._dbg("WAITING FOR PACKET")
         start_time = ticks_ms()
         while ticks_diff(ticks_ms(), start_time) < timeout:
-            if not self._data_ready:
+            if not self._int_data_ready:
                 print("NOT READY")
                 continue
-            new_packet = self._read_packet()
-            return new_packet
+            #new_packet = self._read_packet()
+            packet_byte_count, channel_number, report_id = self._read_packet()
+            return packet_byte_count, channel_number, report_id
         raise RuntimeError("Timed out waiting for a packet")
 
     # update the cached sequence number so we know what to increment from
@@ -1097,33 +1119,31 @@ class BNO08X:
         seq = new_packet.header.sequence_number
         self._seq_nb[channel] = seq
 
-    def _handle_packet(self, packet):
+    def _handle_packet(self, packet_byte_count, channel_number):
         # split out reports first
-        self._dbg("HANDLING PACKET...")
+        if self._debug: self._dbg("HANDLING PACKET...")
         try:
             # get first report id, loop up its report length, read that many bytes, parse them
-            next_byte_index = 0
-            while next_byte_index < packet.header.data_length:
-                report_id = packet.data[next_byte_index]
+            next_byte_index = 4
+            while next_byte_index < packet_byte_count:
+                report_id = self._buffer[next_byte_index]
                 #print("report id = " + hex(report_id))
                 if report_id < 0xF0:  # it's a sensor report
                     required_bytes = AVAIL_SENSOR_REPORTS[report_id][2]
                 else:
                     required_bytes = REPORT_LENGTHS[report_id]
                 #print("required bytes = " + str(required_bytes))
-                unprocessed_byte_count = packet.header.data_length - next_byte_index
+                unprocessed_byte_count = packet_byte_count - next_byte_index
                 # handle incomplete remainder
-                if unprocessed_byte_count < required_bytes:
-                    self._dbg("Unprocessable Batch bytes : Skipping...", unprocessed_byte_count, "bytes")
+                if unprocessed_byte_count < required_bytes or required_bytes == 0:
+                    print("Unprocessable Batch bytes : Skipping...", unprocessed_byte_count, "bytes")
+                    if self._debug: self._dbg("Unprocessable Batch bytes : Skipping...", unprocessed_byte_count, "bytes")
                     break
-                # we have enough bytes to read so add a slice to the list that was passed in
-                report_slice = packet.data[next_byte_index: next_byte_index + required_bytes]
-                self._packet_slices.append([report_slice[0], report_slice])
+                # we have enough bytes to read the report, let's do it
+                self._process_report(report_id, next_byte_index)
                 next_byte_index = next_byte_index + required_bytes
-            while len(self._packet_slices) > 0:
-                self._process_report(*self._packet_slices.pop())
         except Exception as error:
-            self._dbg(packet)
+            sys.print_exception(error)
             raise error
 
     def _handle_control_report(self, report_id, report_bytes):
@@ -1143,7 +1163,7 @@ class BNO08X:
             # report_id, feature_report_id, feature_flags, change_sensitivity, report_interval
             # batch_interval_word, sensor_specific_configuration_word
             _report_id, feature_report_id, *_remainder = unpack_from("<BBBHIII", report_bytes)
-            self._readings[feature_report_id] = INITIAL_REPORTS.get(feature_report_id, (0.0, 0.0, 0.0))
+            self._readings[feature_report_id] = INITIAL_REPORTS.get(feature_report_id, [0.0, 0.0, 0.0])
             if self._debug:
                 outstr = "\t\t\t\t\tReport Id   \t\t%d" % _report_id
                 outstr += "\n\t\t\t\t\tFeat Rep. Id\t\t%d" % feature_report_id
@@ -1172,189 +1192,195 @@ class BNO08X:
             else:
                 raise RuntimeError("Unable to save calibration data")
 
-    def _process_report(self, report_id, report_bytes):
+    def _process_report(self, report_id, next_byte_index):
         self._dbg("PROCESSING REPORTS...")
         if report_id >= 0xF0:
-            self._handle_control_report(report_id, report_bytes)
+            report_slice = self._buffer_mv[next_byte_index : next_byte_index + REPORT_LENGTHS.get(report_id, 0)]
+            self._handle_control_report(report_id, report_slice)
             return
 
-        if self._debug:
-            outstr = "\t\t\t\tProcessing %s report" % REPORTS_DICTIONARY[report_id]
-            for idx, packet_byte in enumerate(report_bytes):
-                packet_index = idx
-                if (packet_index % 4) == 0:
-                    outstr += "\n\t\t\t\t\t[0x{:02X}] ".format(packet_index)
-                outstr += "0x{:02X} ".format(packet_byte)
-            print(outstr)
+        # if self._debug:
+        #     outstr = "\t\t\t\tProcessing %s report" % REPORTS_DICTIONARY[report_id]
+        #     for idx, packet_byte in enumerate(report_bytes):
+        #         packet_index = idx
+        #         if (packet_index % 4) == 0:
+        #             outstr += "\n\t\t\t\t\t[0x{:02X}] ".format(packet_index)
+        #         outstr += "0x{:02X} ".format(packet_byte)
+        #     print(outstr)
 
-        if report_id == BNO_REPORT_STEP_COUNTER:
-            # fixed typo
-            self._readings[report_id] = unpack_from("<H", report_bytes, 8)[0]
-            return
+        # if report_id == BNO_REPORT_STEP_COUNTER:
+        #     # fixed typo
+        #     self._readings[report_id] = unpack_from("<H", report_bytes, 8)[0]
+        #     return
 
-        if report_id == BNO_REPORT_SHAKE_DETECTOR:
-            # Fixed: 16-bit shake bitfield, Mask for X, Y, Z axes (0x01 | 0x02 | 0x04 = 0x07)
-            shake_bitfield = unpack_from("<H", report_bytes, 4)[0]
-            shake_detected = (shake_bitfield & 0x07) != 0
+        # if report_id == BNO_REPORT_SHAKE_DETECTOR:
+        #     # Fixed: 16-bit shake bitfield, Mask for X, Y, Z axes (0x01 | 0x02 | 0x04 = 0x07)
+        #     shake_bitfield = unpack_from("<H", report_bytes, 4)[0]
+        #     shake_detected = (shake_bitfield & 0x07) != 0
 
-            # Latch shake in _readings
-            if shake_detected:
-                previous = self._readings.get(BNO_REPORT_SHAKE_DETECTOR, False)
-                self._readings[BNO_REPORT_SHAKE_DETECTOR] = True
+        #     # Latch shake in _readings
+        #     if shake_detected:
+        #         previous = self._readings.get(BNO_REPORT_SHAKE_DETECTOR, False)
+        #         self._readings[BNO_REPORT_SHAKE_DETECTOR] = True
 
-            return
+        #     return
 
-        if report_id == BNO_REPORT_STABILITY_CLASSIFIER:
-            # fixed typo
-            classification_bitfield = unpack_from("<B", report_bytes, 4)[0]
-            stability_classification = ["Unknown", "On Table", "Stationary", "Stable", "In motion"][
-                classification_bitfield]
-            self._readings[BNO_REPORT_STABILITY_CLASSIFIER] = stability_classification
-            return
+        # if report_id == BNO_REPORT_STABILITY_CLASSIFIER:
+        #     # fixed typo
+        #     classification_bitfield = unpack_from("<B", report_bytes, 4)[0]
+        #     stability_classification = ["Unknown", "On Table", "Stationary", "Stable", "In motion"][
+        #         classification_bitfield]
+        #     self._readings[BNO_REPORT_STABILITY_CLASSIFIER] = stability_classification
+        #     return
 
-        if report_id == BNO_REPORT_ACTIVITY_CLASSIFIER:
-            # 0 Report ID = 0x1E, # 1 Sequence number, # 2 Status, 3 Delay, 4 Page Number + EOS
-            # 5 Most likely state, # 6-15 Classification (10 x Page Number) + confidence
-            end_and_page_number, most_likely = unpack_from("<BB", report_bytes, 4)
-            # last_page = (end_and_page_number & 0b10000000) > 0
-            page_number = end_and_page_number & 0x7F
-            confidences = unpack_from("<BBBBBBBBB", report_bytes, 6)
-            activity_classification = {"most_likely": ACTIVITIES[most_likely]}
-            for idx, raw_confidence in enumerate(confidences):
-                confidence = (10 * page_number) + raw_confidence
-                activity_string = ACTIVITIES[idx]
-                activity_classification[activity_string] = confidence
-            self._readings[BNO_REPORT_ACTIVITY_CLASSIFIER] = activity_classification
-            return
+        # if report_id == BNO_REPORT_ACTIVITY_CLASSIFIER:
+        #     # 0 Report ID = 0x1E, # 1 Sequence number, # 2 Status, 3 Delay, 4 Page Number + EOS
+        #     # 5 Most likely state, # 6-15 Classification (10 x Page Number) + confidence
+        #     end_and_page_number, most_likely = unpack_from("<BB", report_bytes, 4)
+        #     # last_page = (end_and_page_number & 0b10000000) > 0
+        #     page_number = end_and_page_number & 0x7F
+        #     confidences = unpack_from("<BBBBBBBBB", report_bytes, 6)
+        #     activity_classification = {"most_likely": ACTIVITIES[most_likely]}
+        #     for idx, raw_confidence in enumerate(confidences):
+        #         confidence = (10 * page_number) + raw_confidence
+        #         activity_string = ACTIVITIES[idx]
+        #         activity_classification[activity_string] = confidence
+        #     self._readings[BNO_REPORT_ACTIVITY_CLASSIFIER] = activity_classification
+        #     return
 
-        # Raw accelerometer: returns 4-tuple: x, y, z, and time_stamp
-        # time_stamp units in microseconds
-        if report_id == BNO_REPORT_RAW_ACCELEROMETER:
-            data_offset = 4
-            report_id = report_bytes[0]
-            scalar, count, _report_length = AVAIL_SENSOR_REPORTS[report_id]
+        # # Raw accelerometer: returns 4-tuple: x, y, z, and time_stamp
+        # # time_stamp units in microseconds
+        # if report_id == BNO_REPORT_RAW_ACCELEROMETER:
+        #     data_offset = 4
+        #     report_id = report_bytes[0]
+        #     scalar, count, _report_length = AVAIL_SENSOR_REPORTS[report_id]
 
-            results = []
-            # get 3 raw accelerometer x,y,z 16-bit values
-            for _offset_idx in range(count):
-                total_offset = data_offset + (_offset_idx * 2)
-                raw_data = unpack_from("<H", report_bytes, total_offset)[0]
-                results.append(raw_data)
+        #     results = []
+        #     # get 3 raw accelerometer x,y,z 16-bit values
+        #     for _offset_idx in range(count):
+        #         total_offset = data_offset + (_offset_idx * 2)
+        #         raw_data = unpack_from("<H", report_bytes, total_offset)[0]
+        #         results.append(raw_data)
 
-            # get 32-bit time_stamp from raw accelerometer, time_stamp units in microseconds
-            time_stamp = unpack_from("<I", report_bytes, 12)[0]
-            results.append(time_stamp)
+        #     # get 32-bit time_stamp from raw accelerometer, time_stamp units in microseconds
+        #     time_stamp = unpack_from("<I", report_bytes, 12)[0]
+        #     results.append(time_stamp)
 
-            sensor_data = tuple(results)
-            if self._debug:
-                outstr = "\t\t\t\tReading for %s %s Time_stamp %u" % (REPORTS_DICTIONARY[report_id], str(sensor_data),
-                                                                      time_stamp)
-                print(outstr)
+        #     sensor_data = tuple(results)
+        #     if self._debug:
+        #         outstr = "\t\t\t\tReading for %s %s Time_stamp %u" % (REPORTS_DICTIONARY[report_id], str(sensor_data),
+        #                                                               time_stamp)
+        #         print(outstr)
 
-            # TODO: FIXME; Sensor reports are batched in a LIFO which means that multiple reports
-            # for the same type will end with the oldest/last being kept and the other
-            # newer reports thrown away
-            self._readings[report_id] = sensor_data
+        #     # TODO: FIXME; Sensor reports are batched in a LIFO which means that multiple reports
+        #     # for the same type will end with the oldest/last being kept and the other
+        #     # newer reports thrown away
+        #     self._readings[report_id] = sensor_data
 
-            return
+        #     return
 
-        # Raw gyroscope: returns 5-tuple: x, y, z, celsius, and time_stamp
-        # time_stamp units in microseconds
-        # Celsius float units in celsius
-        if report_id == BNO_REPORT_RAW_GYROSCOPE:
-            data_offset = 4
-            report_id = report_bytes[0]
-            scalar, count, _report_length = AVAIL_SENSOR_REPORTS[report_id]
+        # # Raw gyroscope: returns 5-tuple: x, y, z, celsius, and time_stamp
+        # # time_stamp units in microseconds
+        # # Celsius float units in celsius
+        # if report_id == BNO_REPORT_RAW_GYROSCOPE:
+        #     data_offset = 4
+        #     report_id = report_bytes[0]
+        #     scalar, count, _report_length = AVAIL_SENSOR_REPORTS[report_id]
 
-            results = []
-            # get 3 raw gyroscope x,y,z 16-bit values
-            for _offset_idx in range(count):
-                total_offset = data_offset + (_offset_idx * 2)
-                raw_data = unpack_from("<H", report_bytes, total_offset)[0]
-                results.append(raw_data)
+        #     results = []
+        #     # get 3 raw gyroscope x,y,z 16-bit values
+        #     for _offset_idx in range(count):
+        #         total_offset = data_offset + (_offset_idx * 2)
+        #         raw_data = unpack_from("<H", report_bytes, total_offset)[0]
+        #         results.append(raw_data)
 
-            # get temperature from raw gyroscope
-            # Cera support: temp_int is signed 16-bit int, 0.5C/LSB, center offset is 23°C
-            temp_int = unpack_from("<h", report_bytes, 10)[0]
-            celsius = (temp_int / 2.0) + 23.0
-            results.append(celsius)
+        #     # get temperature from raw gyroscope
+        #     # Cera support: temp_int is signed 16-bit int, 0.5C/LSB, center offset is 23°C
+        #     temp_int = unpack_from("<h", report_bytes, 10)[0]
+        #     celsius = (temp_int / 2.0) + 23.0
+        #     results.append(celsius)
 
-            # get 32-bit time_stamp from raw gyroscope, time_stamp units in microseconds
-            time_stamp = unpack_from("<I", report_bytes, 12)[0]
-            results.append(time_stamp)
+        #     # get 32-bit time_stamp from raw gyroscope, time_stamp units in microseconds
+        #     time_stamp = unpack_from("<I", report_bytes, 12)[0]
+        #     results.append(time_stamp)
 
-            sensor_data = tuple(results)
-            if self._debug:
-                outstr = "\t\t\t\tReading for %s %s Time_stamp %u" % (REPORTS_DICTIONARY[report_id], str(sensor_data),
-                                                                      time_stamp)
-                print(outstr)
+        #     sensor_data = tuple(results)
+        #     if self._debug:
+        #         outstr = "\t\t\t\tReading for %s %s Time_stamp %u" % (REPORTS_DICTIONARY[report_id], str(sensor_data),
+        #                                                               time_stamp)
+        #         print(outstr)
 
-            # TODO: FIXME; Sensor reports are batched in a LIFO which means that multiple reports
-            # for the same type will end with the oldest/last being kept and the other
-            # newer reports thrown away
-            self._readings[report_id] = sensor_data
+        #     # TODO: FIXME; Sensor reports are batched in a LIFO which means that multiple reports
+        #     # for the same type will end with the oldest/last being kept and the other
+        #     # newer reports thrown away
+        #     self._readings[report_id] = sensor_data
 
-            return
+        #     return
 
-        # Raw Magnetometer: returns 4-tuple: x, y, z, and time_stamp
-        # time_stamp units in microseconds
-        if report_id == BNO_REPORT_RAW_MAGNETOMETER:
-            data_offset = 4
-            report_id = report_bytes[0]
-            scalar, count, _report_length = AVAIL_SENSOR_REPORTS[report_id]
+        # # Raw Magnetometer: returns 4-tuple: x, y, z, and time_stamp
+        # # time_stamp units in microseconds
+        # if report_id == BNO_REPORT_RAW_MAGNETOMETER:
+        #     data_offset = 4
+        #     report_id = report_bytes[0]
+        #     scalar, count, _report_length = AVAIL_SENSOR_REPORTS[report_id]
 
-            results = []
-            # get 3 raw magnetometer x,y,z 16-bit values
-            for _offset_idx in range(count):
-                total_offset = data_offset + (_offset_idx * 2)
-                raw_data = unpack_from("<H", report_bytes, total_offset)[0]
-                results.append(raw_data)
+        #     results = []
+        #     # get 3 raw magnetometer x,y,z 16-bit values
+        #     for _offset_idx in range(count):
+        #         total_offset = data_offset + (_offset_idx * 2)
+        #         raw_data = unpack_from("<H", report_bytes, total_offset)[0]
+        #         results.append(raw_data)
 
-            # get 32-bit time_stamp from raw magnetometer, time_stamp units in microseconds
-            time_stamp = unpack_from("<I", report_bytes, 12)[0]
-            results.append(time_stamp)
+        #     # get 32-bit time_stamp from raw magnetometer, time_stamp units in microseconds
+        #     time_stamp = unpack_from("<I", report_bytes, 12)[0]
+        #     results.append(time_stamp)
 
-            sensor_data = tuple(results)
-            if self._debug:
-                outstr = "\t\t\t\tReading for %s %s Time_stamp %u" % (REPORTS_DICTIONARY[report_id], str(sensor_data),
-                                                                      time_stamp)
-                print(outstr)
+        #     sensor_data = tuple(results)
+        #     if self._debug:
+        #         outstr = "\t\t\t\tReading for %s %s Time_stamp %u" % (REPORTS_DICTIONARY[report_id], str(sensor_data),
+        #                                                               time_stamp)
+        #         print(outstr)
 
-            # TODO: FIXME; Sensor reports are batched in a LIFO which means that multiple reports
-            # for the same type will end with the oldest/last being kept and the other
-            # newer reports thrown away
-            self._readings[report_id] = sensor_data
+        #     # TODO: FIXME; Sensor reports are batched in a LIFO which means that multiple reports
+        #     # for the same type will end with the oldest/last being kept and the other
+        #     # newer reports thrown away
+        #     self._readings[report_id] = sensor_data
 
-            return
+        #     return
 
         # General case, parsing the report data with only 16-bit fields
-        data_offset = 4  # this may not always be true
-        report_id = report_bytes[0]
+        data_offset = next_byte_index + 4
         scalar, count, _report_length = AVAIL_SENSOR_REPORTS[report_id]
-        if report_id in RAW_REPORTS:  # raw reports are unsigned
-            format_str = "<H"
-        else:
-            format_str = "<h"
-        results = []
-        accuracy = unpack_from("<B", report_bytes, 2)[0]
-        accuracy &= 0b11
+        accuracy = self._buffer[next_byte_index + 2] & 0b11
 
-        for _offset_idx in range(count):
-            total_offset = data_offset + (_offset_idx * 2)
-            raw_data = unpack_from(format_str, report_bytes, total_offset)[0]
-            scaled_data = raw_data * scalar
-            results.append(scaled_data)
-        sensor_data = tuple(results)
+        if report_id in self._readings:            
+            for _offset_idx in range(count):
+                total_offset = data_offset + (_offset_idx * 2)
+                #raw_data = unpack_from(format_str, report_bytes, total_offset)[0]
+                raw_data = self._buffer[total_offset] | (self._buffer[total_offset + 1] << 8)
+                # Convert to signed 16-bit integer if it's not a RAW (unsigned) report
+                if report_id not in RAW_REPORTS:
+                    if raw_data > 32767:
+                        raw_data -= 65536
+                scaled_data = raw_data * scalar
+                self._readings[report_id][_offset_idx] = scaled_data
+                #results.append(scaled_data)
+        else:
+            self._readings[report_id] = [0.0] * count # Initialize once
+        #sensor_data = tuple(results)
         if self._debug:
             outstr = "\t\t\t\tReading for %s %s Accuracy %d" % (REPORTS_DICTIONARY[report_id], str(sensor_data),
                                                                 accuracy)
             print(outstr)
-        if report_id == BNO_REPORT_MAGNETOMETER:
-            self._magnetometer_accuracy = accuracy
+        # if report_id == BNO_REPORT_MAGNETOMETER:
+        #     self._magnetometer_accuracy = accuracy
+
+        if report_id == BNO_REPORT_ROTATION_VECTOR:
+            self._rot_vector_ready = True
         # TODO: FIXME; Sensor reports are batched in a LIFO which means that multiple reports
         # for the same type will end with the oldest/last being kept and the other
         # newer reports thrown away
-        self._readings[report_id] = sensor_data
+        #self._readings[report_id] = sensor_data
 
     def _check_id(self):
         self._dbg("CHECKING ID...")
@@ -1368,7 +1394,7 @@ class BNO08X:
         while True:
             self._wait_for_packet_type(
                 BNO_CHANNEL_CONTROL, SHTP_REPORT_ID_RESPONSE
-            )
+            )            
             sensor_id = self._parse_sensor_id()
             if sensor_id:
                 self._id_read = True
@@ -1387,20 +1413,29 @@ class BNO08X:
         return sw_part_number
 
     @property
-    def _data_ready(self):
-        # Check if there is available data on the I2C bus
-        header = self._read_header()
-        #print("header = " + str(header))
-        if header.channel_number > 5:
-            self._dbg("channel number out of range:", header.channel_number)
-        if header.packet_byte_count == 0x7FFF:
+    def _data_ready(self): # Not used
+        # # Check if there is available data on the I2C bus 
+        self._i2c.readfrom_into(self._bno_add, self._header_mv)
+        #packet_byte_count, channel_number, sequence_number = unpack_from("<HBB", self._buffer)
+        packet_byte_count = self._buffer[0] | (self._buffer[1] << 8)
+        channel_number = self._buffer[2]
+        sequence_number = self._buffer[3]
+
+        packet_byte_count &= ~0x8000
+        data_length = max(0, packet_byte_count - 4)
+        #print("dr: pbc = " + str(packet_byte_count) + " dl = " + str(data_length))
+
+        if channel_number > 5:
+            if self._debug: self._dbg("channel number out of range:", channel_number)
+        if packet_byte_count == 0x7FFF:
             print("Byte count is 0x7FFF/0xFFFF; Error?")
-            if header.sequence_number == 0xFF:
+            if sequence_number == 0xFF:
                 print("Sequence number is 0xFF; Error?")
             ready = False
-        else:
-            ready = header.data_length > 0
-        self._dbg("BNO08X_I2C_DATA READY : ", ready)
+        else:    
+            ready = data_length > 0
+        if self._debug: self._dbg("BNO08X_I2C_DATA READY : ", ready)
+
         #print("BNO08X_I2C_DATA READY : ", ready)
         #print("header data len = " + str(header.data_length))
         return ready
@@ -1432,7 +1467,7 @@ class BNO08X:
     # Read a packet = header + packet data
     def _read_packet(self):
 
-        self._dbg("READING PACKET...")
+        if self._debug: self._dbg("READING PACKET...")
 
         # Header is 4 bytes long (2 bytes size, 1 byte for channel number and 1 byte for sequence number)
         # Buffer is declared in BNO08X class : self._buffer = bytearray(512)
@@ -1440,32 +1475,67 @@ class BNO08X:
         # I2C address is declared in class : self._bno_add
 
         # Begin with reading a header ==> Expecting a header (4 bytes)
-        self._i2c.readfrom_into(self._bno_add, self._buffer_mv[0:4])
+        # This is needed to know how many bytes are in the packet.
+        # When reading the header, the BNO086 clear the interrupt pin (high level) and since the packet is not completely read then it set it again (low level).
+        # This generate an interrupt that need to be ignored until the packet is completely read, so we set a lock here to ignore interrupt until the packet is completely read.        
+        #print("Reading header...")
+        self.int_locked = True
+        #start_time = time.ticks_ms()
+        self._i2c.readfrom_into(self._bno_add, self._header_mv)
+        #print("_header_mv = " + str(time.ticks_diff(time.ticks_ms(), start_time)))
 
         # Decode the  and update sequence number
-        header = Packet.header_from_buffer(self._buffer[0:4])
-        packet_byte_count = header.packet_byte_count
+        # header = Packet.header_from_buffer(self._buffer[0:4])
+        # packet_byte_count = header.packet_byte_count
+        # #print("packet len = " + str(packet_byte_count))
+        # channel_number = header.channel_number
+        # sequence_number = header.sequence_number
+        # data_length = header.data_length
+        # #print("header data len = " + str(data_length))
+
+        #packet_byte_count, channel_number, sequence_number = unpack_from("<HBB", self._buffer)
+        packet_byte_count = (self._buffer[0] | (self._buffer[1] << 8)) & (~0x8000)
+        channel_number = self._buffer[2]
+        sequence_number = self._buffer[3]
         #print("packet len = " + str(packet_byte_count))
-        channel_number = header.channel_number
-        sequence_number = header.sequence_number
-        data_length = header.data_length
+        data_length = max(0, packet_byte_count - 4)
         #print("header data len = " + str(data_length))
+        #print("header = " + str(self._buffer[0:4]))
+        #temp = self._buffer[0:4]
+
         self._seq_nb[channel_number] = sequence_number
 
         if packet_byte_count == 0:
-            self._dbg("\tSKIPPING NO PACKETS AVAILABLE IN bno08x_i2c._read_packet")
+            self.int_locked = False
+            if self._debug: self._dbg("\tSKIPPING NO PACKETS AVAILABLE IN bno08x_i2c._read_packet")
+            print("no packets available")
             raise PacketError("No packet available")
 
         # Then we read the packet data to the buffer image
+        #print("Reading all packet...")
+        #start_time = time.ticks_ms()
+        # Beware that the BNO086 when we read the packet again it send also the header even if it was already read (it increments the sequence number of the header).
         self._i2c.readfrom_into(self._bno_add, self._buffer_mv[0:packet_byte_count])
-        #print("packet data = " + str(self._buffer[0:packet_byte_count]))
+        self.int_locked = False # Free the lock just after reading the packet
+        packet_byte_count2 = (self._buffer[0] | (self._buffer[1] << 8)) & (~0x8000) # Sometimes happens that this packet is completely null (all zeros), it seems that the BNO086 is not ready to send the packet so try again once
+        if packet_byte_count2 == 0:                
+            self._i2c.readfrom_into(self._bno_add, self._buffer_mv[0:packet_byte_count])
+            #print("read again")
+        #print("_buffer_mv = " + str(time.ticks_diff(time.ticks_ms(), start_time)))
         # Then process the packet
+        #print("header = " + str(temp))
+        #print("header2 = " + str(self._buffer[0:4]))
         #print("packet = " + str(self._buffer[0:packet_byte_count]))
-        new_packet = Packet(self._buffer[0:packet_byte_count])
-        if self._debug:
-            print(new_packet)
-        self._update_sequence_number(new_packet)
-        return new_packet
+        #new_packet = Packet(self._buffer[0:packet_byte_count])
+        #if self._debug:
+        #    print(new_packet)
+        #self._update_sequence_number(new_packet)
+        #return new_packet
+
+        report_id = self._buffer[4]
+
+        return packet_byte_count, channel_number, report_id
+        
 
     def _read_header(self):
 

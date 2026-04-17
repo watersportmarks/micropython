@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include <time.h>
+#include <math.h>
 #include <sys/time.h>
 #include "soc/rtc_cntl_reg.h"
 #include "driver/gpio.h"
@@ -45,6 +46,8 @@
 #include "../../../../../main/bluetooth.h"
 #include "../../../../../main/logging.h"
 #include "../../../../../main/alerts.h"
+
+#define degrees(rad) ((rad) * (180.0 / M_PI))
 
 char api_version[6] = "XX.XX\0";
 char temp_buff[512];
@@ -541,6 +544,40 @@ mp_obj_t wsm_turn_off(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(wsm_turn_off_obj, wsm_turn_off);
 
+/// \method wsm_compute_euler()
+/// Compute Euler angles.
+mp_obj_t wsm_compute_euler(size_t n_args, const mp_obj_t *args) {
+    mp_obj_list_t *data = MP_OBJ_TO_PTR(mp_obj_new_list(3, NULL));
+    double x = mp_obj_get_float(args[0]);
+    double y = mp_obj_get_float(args[1]);
+    double z = mp_obj_get_float(args[2]);
+    double w = mp_obj_get_float(args[3]);
+    double ysqr = y * y;
+
+    // Roll (x-axis rotation)
+    double t0 = 2.0 * (w * x + y * z);
+    double t1 = 1.0 - 2.0 * (x * x + ysqr);
+    double roll = degrees(atan2(t0, t1));
+
+    // Pitch (y-axis rotation)
+    double t2 = 2.0 * (w * y - z * x);
+    // Manual clamping to [-1.0, 1.0] to avoid nan in asin
+    t2 = (t2 > 1.0) ? 1.0 : t2;
+    t2 = (t2 < -1.0) ? -1.0 : t2;
+    double pitch = degrees(asin(t2));
+
+    // Yaw (z-axis rotation)
+    double t3 = 2.0 * (w * z + x * y);
+    double t4 = 1.0 - 2.0 * (ysqr + z * z);
+    double yaw = degrees(atan2(t3, t4));
+
+    data->items[0] = mp_obj_new_float(roll);
+    data->items[1] = mp_obj_new_float(pitch);
+    data->items[2] = mp_obj_new_float(yaw);
+    return MP_OBJ_FROM_PTR(data);
+}
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(wsm_compute_euler_obj, 4, 4, wsm_compute_euler);
+
 static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_wsm) },
 
@@ -610,6 +647,7 @@ static const mp_rom_map_elem_t wsm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_get_desfw), MP_ROM_PTR(&wsm_get_desfw_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_yaw_start), MP_ROM_PTR(&wsm_get_yaw_start_obj) },
     { MP_ROM_QSTR(MP_QSTR_turn_off), MP_ROM_PTR(&wsm_turn_off_obj) },
+    { MP_ROM_QSTR(MP_QSTR_compute_euler), MP_ROM_PTR(&wsm_compute_euler_obj) },
 };
 
 static MP_DEFINE_CONST_DICT(wsm_module_globals, wsm_module_globals_table);

@@ -9,6 +9,7 @@ from machine import WDT
 import esp32
 import bmm150
 import sys
+import gc
 
 # Constants
 GPS_I2C_ADDRESS = 0x42
@@ -118,24 +119,17 @@ if imu_dev_used == USE_BNO085:
     from bno08x_i2c import *
 else:
     from bno08x import *
-bno086_num_int_to_wait = 1
 bno086_int_pin = Pin(17, Pin.IN, Pin.PULL_UP)
-bno086_data_ready = 0
-def bno086_irq_handler(pin):    
-    global bno086_data_ready
-    #print("bno086 int = " + str(bno086_int_pin.value()))
-    bno086_data_ready = bno086_data_ready + 1
-bno086_int_pin.irq(trigger=Pin.IRQ_FALLING, handler=bno086_irq_handler)
 bno = None
 def init_bno086():
-    global bno, warnings, bno086_data_ready
+    global bno, warnings
 
     # BNO086 class init (simply init variables)
     trials = 0
     while trials < 3:
         try:
             #print("init BNO086" + str(trials))
-            bno = BNO08X(i2c, address=0x4A, debug=False)
+            bno = BNO08X(i2c, address=0x4A, int_pin=bno086_int_pin, debug=False)
             #print("init BNO086 done")
             break
         except:
@@ -146,18 +140,17 @@ def init_bno086():
         bno = None
         warnings += ";IMU init error"
         return
-    
+
     # BNO086 soft reset issue and wait response
     #print("BNO086 issue soft reset")
     bno.soft_reset() # send the command on channel 0x01 with payload id 0x01
     #print("BNO086 soft reset sent")
     trials = 0
     while trials < 3: # wait for the reset complete response: channel 0x01 with payload 0x01
-        if bno086_data_ready > 0:
-            bno086_data_ready = 0
-            if bno.soft_reset_complete():
-                #print("BNO086 reset complete")
-                break
+        #print("reading reset resp")
+        if bno.soft_reset_complete():
+            #print("BNO086 reset complete")
+            break            
         trials = trials + 1
         #print("BNO086 waiting reset complete " + str(trials))
         time.sleep(0.2)
@@ -166,18 +159,28 @@ def init_bno086():
         warnings += ";IMU init error"
         return
     
+    # Empty the queue if there is something to read (e.g. advertisment packet or initalize packet)
+    trials = 0
+    while (bno086_int_pin.value() == 0): # The interrupt is active low
+        #print("BNO086 int still low after reset, reading data")
+        bno.process_queue()
+        trials = trials + 1
+        if trials >= 10: # something strange is happening (pin stuck low?)
+            bno = None
+            return
+        time.sleep(0.2)
+
     # BNO086 enable calibration and wait command response
     #print("BNO086 issue calibration enable")
     bno.calibration() # send the command on channel 0x02 with payload id 0xF2
     #print("BNO086 calibration enable sent")
     trials = 0
     while trials < 3: # wait for the command response
-        if bno086_data_ready > 0:
-            bno086_data_ready = 0
-            bno.process_queue()
-            if bno.calibration_completed():
-                #print("BNO086 calibration completed")
-                break
+        #print("reading calib resp")
+        bno.process_queue()
+        if bno.calibration_completed():
+            #print("BNO086 calibration completed")
+            break            
         trials = trials + 1
         #print("BNO086 waiting calibration complete " + str(trials))
         time.sleep(0.2)
@@ -192,12 +195,10 @@ def init_bno086():
     #print("BNO086 rotation vector enable sent")
     trials = 0
     while trials < 3: # wait for the command response
-        if bno086_data_ready > 0:
-            bno086_data_ready = 0
-            bno.process_queue()
-            if bno.feature_enabled(BNO_REPORT_ROTATION_VECTOR):
-                 #print("BNO086 rotation vector enabled")
-                 break
+        bno.process_queue()
+        if bno.feature_enabled(BNO_REPORT_ROTATION_VECTOR):
+            #print("BNO086 rotation vector enabled")
+            break
         trials = trials + 1
         #print("BNO086 waiting rotation vector complete " + str(trials))
         time.sleep(0.2)
@@ -207,10 +208,8 @@ def init_bno086():
         return
 
 if imu_dev_used == USE_BNO085:
-    bno086_num_int_to_wait = 1
     try:
         bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
-        #bno = BNO08X_I2C(i2c, debug=False)
         bno.calibration() # calibrate accel + mag
         bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms
         #print("IMU configured")
@@ -219,7 +218,6 @@ if imu_dev_used == USE_BNO085:
         bno = None
 else:
     init_bno086()
-    bno086_num_int_to_wait = 3
 
 # GPS init
 startTgps = time.ticks_ms()
@@ -472,7 +470,7 @@ def read_compass():
         print("error reading magnetometer " + str(e))
 
 def start_control_loop():
-    global freshGPS, GPSdeltaDist, GPS_HZ, GPSheading, GPSprecision, time_refreshGPS, warnings, amp, volt, adc, mAh, headingFilt, global_status_warnings, VOLTAGE_DIVIDER, MIN_WIDTH, MAX_WIDTH, timeGPS, date_day, date_month, bno, mag_degrees, lat, lon, bno086_data_ready
+    global freshGPS, GPSdeltaDist, GPS_HZ, GPSheading, GPSprecision, time_refreshGPS, warnings, amp, volt, adc, mAh, headingFilt, global_status_warnings, VOLTAGE_DIVIDER, MIN_WIDTH, MAX_WIDTH, timeGPS, date_day, date_month, bno, mag_degrees, lat, lon
 
     MOTlimit = 500
     SOFT_ACC_STEP = 2 # When goal changed, for 10 seconds is active
@@ -589,6 +587,7 @@ def start_control_loop():
     roll_imu = 0
     yaw_imu = 0
     confidence_imu = 0
+    imu_data_not_ready = 0
 
     boaID = wsm.get_mark_id()
     print("boa id = " + str(boaID))
@@ -674,6 +673,9 @@ def start_control_loop():
         escType = 1  # waterproof ESC
 
     if boaID == 220100304700752: # el. 111
+        conf_shunt_low = 0
+
+    if boaID == 154270941121212: # 144
         conf_shunt_low = 0
 
     wsm.set_force_forward(forceForward)
@@ -776,7 +778,9 @@ def start_control_loop():
             #******* read imu at 25Hz
             #print("bno.euler = " + str(bno.euler))
             #start = time.ticks_ms()
-            #print("bno086_data_ready = " + str(bno086_data_ready))
+            #print("imu_data_not_ready = " + str(imu_data_not_ready))
+            #before = gc.mem_free()
+            #start_imu = time.ticks_ms()
             if bno != None:
                 try: # sometimes I get error here...
                     if imu_dev_used == USE_BNO085:
@@ -785,20 +789,28 @@ def start_control_loop():
                         #print("pitch = " + str(int(pitch_imu)))
                         bnoErrorCount = 0
                     else:
-                        if bno086_data_ready >= bno086_num_int_to_wait:
-                            bno086_data_ready = 0
-                            #bno.process_queue()
-                            pitch_imu, roll_imu, yaw_imu, confidence_imu = bno.euler  # pitch and roll inverted to be aligned as in the mark                       
-                            #print("roll = " + str(int(roll_imu)))
-                            #print("pitch = " + str(int(pitch_imu)))
-                            bnoErrorCount = 0
+                        pitch_imu, roll_imu, yaw_imu, confidence_imu = bno.euler  # pitch and roll inverted to be aligned as in the mark
+                        if bno.euler_ready(): # When calling "bno.euler" a flag is set if data were actually available to be read. This library flag is cleared automatically when calling this function.
+                            imu_data_not_ready = 0
+                        else:
+                            imu_data_not_ready = imu_data_not_ready + 1
+                            if imu_data_not_ready > 5:
+                                #print("IMU data not ready for a long time, reinit bno...")
+                                warnings+=";IMU data not ready, reinit bno"
+                                init_bno086()
+                                imu_data_not_ready = 0                                      
+
+                        #print("roll = " + str(int(roll_imu)))
+                        #print("pitch = " + str(int(pitch_imu)))
+                        bnoErrorCount = 0
                 except Exception as e:
                     print("imu read error: " + str(e) + ", count = " + str(bnoErrorCount))
+                    #sys.print_exception(e)
                     #confidence_imu = -1 # keep previous
                     bnoErrorCount = bnoErrorCount + 1
                     if bnoErrorCount == 3:
                         bnoErrorCount = 0
-                        print("reinit bno...")
+                        #print("reinit bno...")
                         warnings+=";reinit bno"
                         if imu_dev_used == USE_BNO085:
                             bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
@@ -811,14 +823,16 @@ def start_control_loop():
                 #pitch_imu = 0 # keep previous
                 #yaw_imu = 0  # keep previous
                 #confidence_imu = -1 # keep previous
-                print("reinit bno...")
+                #print("reinit bno...")
                 warnings+=";reinit bno"
                 if imu_dev_used == USE_BNO085:
                     bno = BNO08X_I2C(i2c, address=0x4A, debug=False)
                     bno.calibration() # calibrate accel + mag
                     bno.enable_feature(BNO_REPORT_ROTATION_VECTOR) # default every 50 ms
                 else:
-                    init_bno086()              
+                    init_bno086()    
+            #print("imu read time = " + str(time.ticks_diff(time.ticks_ms(), start_imu)))
+            #print("delta mem = " + str(before - gc.mem_free()))
             #delta = time.ticks_diff(time.ticks_ms(), start) # compute time difference
             #delta_time[log_count] = delta
 
