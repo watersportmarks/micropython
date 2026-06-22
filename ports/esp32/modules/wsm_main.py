@@ -677,6 +677,16 @@ def start_control_loop():
 
     if boaID == 154270941121212: # 144
         conf_shunt_low = 0
+        motorType = 8
+
+    if boaID == 154270941121092: # 146
+        conf_shunt_low = 0
+
+    if boaID == 154270941103336: # 4Cel
+        conf_shunt_low = 0
+
+    if boaID == 154270941121228: # 120el
+        conf_shunt_low = 0
 
     wsm.set_force_forward(forceForward)
 
@@ -727,6 +737,8 @@ def start_control_loop():
         kdD=50 # k for diff distance
         kdI=0 # k for integr distance
         kWind=1.0
+    if motorType==8:# like T200 fast + ESC big water
+        MOTlimit=230
 
     if escType==1: # waterproof esc
         limitAmp = 35
@@ -948,6 +960,31 @@ def start_control_loop():
                 rot=limitMotor(rot,400)# temporary limit 400, later 500
                 mR= desFW + rot
                 mL= desFW - rot
+
+                # 1. Find the "worst" violation of the limits among the two motors if any (mR or mL above the max or below the min)
+                # If mR is 300 and limit is 250, shift is 50.
+                # If mL is -300 and limit is 250, shift is -50.
+                shift = 0                
+                # Check Right Motor
+                if mR > MOTlimit:
+                    shift = mR - MOTlimit
+                elif mR < (-MOTlimit):
+                    shift = mR + MOTlimit
+                # Check Left Motor (and see if its violation is worse than the right one)
+                if mL > MOTlimit:
+                    if (mL - MOTlimit) > abs(shift):
+                        shift = mL - MOTlimit
+                elif mL < (-MOTlimit):
+                    if abs(mL + MOTlimit) > abs(shift):
+                        shift = mL + MOTlimit
+                # 2. Apply the shift to both motors to preserve the rotation (mR - mL)
+                mR -= shift
+                mL -= shift
+                # 3. Emergency individual clip in case the desired rotation difference itself is wider than the limited total motor span.
+                # E.g. if the limits can only go from -250 to +250, the total "window" of power is 500 units, but the PID controller asks for a rotation that requires a difference of 600 units.
+                mR = max(min(mR, MOTlimit), (-MOTlimit))
+                mL = max(min(mL, MOTlimit), (-MOTlimit))
+
                 if firstPosFix==0: # before first fix do not control angle. used to check motors
                     mR= desFW
                     mL= desFW
@@ -968,7 +1005,7 @@ def start_control_loop():
                 if (pitch>66 or pitch<-89):
                     #print("pitch limit " + str(pitch) + ", " + str(pitch_imu))
                     mR=0
-                    mL=0                
+                    mL=0
                 mR_duty=1500 + mR
                 wsm.set_mr_duty(int(mR_duty))
                 mL_duty=1500 + mL
@@ -1183,6 +1220,30 @@ def start_control_loop():
                     disableControlAndStop = 0
                     firstDistError = 1
 
+                # 1. Find the "worst" violation of the limits among the two motors if any (mR or mL above the max or below the min)
+                # If mR is 300 and limit is 250, shift is 50.
+                # If mL is -300 and limit is 250, shift is -50.
+                shift = 0                
+                # Check Right Motor
+                if mR > MOTlimit:
+                    shift = mR - MOTlimit
+                elif mR < (-MOTlimit):
+                    shift = mR + MOTlimit
+                # Check Left Motor (and see if its violation is worse than the right one)
+                if mL > MOTlimit:
+                    if (mL - MOTlimit) > abs(shift):
+                        shift = mL - MOTlimit
+                elif mL < (-MOTlimit):
+                    if abs(mL + MOTlimit) > abs(shift):
+                        shift = mL + MOTlimit
+                # 2. Apply the shift to both motors to preserve the rotation (mR - mL)
+                mR -= shift
+                mL -= shift
+                # 3. Emergency individual clip in case the desired rotation difference itself is wider than the limited total motor span.
+                # E.g. if the limits can only go from -250 to +250, the total "window" of power is 500 units, but the PID controller asks for a rotation that requires a difference of 600 units.
+                mR = max(min(mR, MOTlimit), (-MOTlimit))
+                mL = max(min(mL, MOTlimit), (-MOTlimit))
+
                 # limitation from pitch
                 if (pitch>22 and pitch<67) : # 
                     mR=mR *(67-pitch)/45
@@ -1193,7 +1254,7 @@ def start_control_loop():
                 if (pitch>66 or pitch<-89):
                     mR=0
                     mL=0
-                    
+
                 mR_duty=1500 + mR
                 wsm.set_mr_duty(int(mR_duty))
                 mL_duty=1500 + mL
